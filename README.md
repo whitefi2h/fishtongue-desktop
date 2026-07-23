@@ -3,7 +3,8 @@
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
 > 当前状态：Phase 0 桌面壳正在验收。Tauri 2 窗口、静态 Next.js 前端和
-> CodeMirror/Lezer 编辑器切片已经实现；SQLite、项目文件与 Lexurgy Sidecar 尚未接入。
+> CodeMirror/Lezer 编辑器切片已经实现，本机安装、卸载、重装已通过；
+> SQLite、项目文件与 Lexurgy Sidecar 尚未接入。
 
 ## 最终用户体验
 

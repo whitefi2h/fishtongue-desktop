@@ -60,6 +60,8 @@ Visual Studio C++ 工具使用 `vswhere` 检测；WebView2 使用 Windows 注册
 - `npm run tauri:dev`：独立 FishTongue 窗口成功启动并正常结束；
 - `npm run tauri:build`：通过，生成 NSIS 安装程序；
 - 发布版 `src-tauri/target/release/fishtongue.exe`：成功启动，窗口关闭后无残留进程。
+- 本机 NSIS 循环：安装、启动、卸载、重装和开始菜单再次启动均通过；
+  最终状态为 FishTongue 已安装、应用已关闭、无残留进程。
 
 ## 待复核
 
