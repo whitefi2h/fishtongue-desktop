@@ -1,0 +1,23 @@
+[package]
+name = "fishtongue"
+version = "0.0.1-phase.0"
+description = "A local-first conlang creation desktop application"
+authors = ["FishTongue contributors"]
+license = "GPL-3.0-only"
+repository = "https://github.com/whitefi2h/fishtongue-desktop"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "fishtongue_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2.11.3", features = [] }

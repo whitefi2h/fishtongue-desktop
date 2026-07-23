@@ -2,7 +2,8 @@
 
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：项目处于桌面架构规划与仓库初始化阶段，尚未进入功能实现。
+> 当前状态：Phase 0 桌面壳正在验收。Tauri 2 窗口、静态 Next.js 前端和
+> CodeMirror/Lezer 编辑器切片已经实现；SQLite、项目文件与 Lexurgy Sidecar 尚未接入。
 
 ## 最终用户体验
 
@@ -55,11 +56,11 @@ FishTongue Desktop
 
 ### 相比原 Web 方案的三项核心变化
 
-| 原方案 | 桌面方案 |
-|---|---|
-| Next.js 全栈 Web 应用 | Next.js 静态导出，作为 Tauri 界面 |
-| Neo4j 服务端数据库 | 应用内嵌 SQLite |
-| 独立 Lexurgy / Python 服务 | 随安装包携带的 Sidecar |
+| 原方案                     | 桌面方案                          |
+| -------------------------- | --------------------------------- |
+| Next.js 全栈 Web 应用      | Next.js 静态导出，作为 Tauri 界面 |
+| Neo4j 服务端数据库         | 应用内嵌 SQLite                   |
+| 独立 Lexurgy / Python 服务 | 随安装包携带的 Sidecar            |
 
 首版采用单机、单用户和本地项目文件。NextAuth、在线注册、多用户权限、云端数据库和 Web 服务器部署不属于首版范围。
 
@@ -191,16 +192,16 @@ fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
 
 ## 开发路线图
 
-| 阶段 | 目标 | 核心验收 |
-|---|---|---|
-| Phase 0 | 桌面壳验证 | `FishTongue.exe` 可以安装和启动；CodeMirror 在 Tauri 中工作 |
-| Phase 1 | 本地数据库与项目文件 | 不运行 Neo4j 和 Docker 也能创建语言和词条 |
-| Phase 2 | Lexurgy Sidecar | 用户无需安装 Java 即可运行音变、验证规则并查看错误 |
-| Phase 3 | 词典与造词 | 支持多词义、语素、确定性造词、审核、批量提交和撤销 |
-| Phase 4 | LLM | 密钥加密；结构化提案；模型不能直写正式数据；无 LLM 模式可用 |
-| Phase 5 | 历史与语言树 | 支持语言阶段、分支、词源、借词事件和 Lexurgy 演化链 |
-| Phase 6 | Analysis Sidecar | PanPhon、Morfessor、借词适配和逆向分析独立打包 |
-| Phase 7 | 正式发布 | 安装、更新、备份、恢复、完整测试及跨平台构建 |
+| 阶段    | 目标                 | 核心验收                                                    |
+| ------- | -------------------- | ----------------------------------------------------------- |
+| Phase 0 | 桌面壳验证           | `FishTongue.exe` 可以安装和启动；CodeMirror 在 Tauri 中工作 |
+| Phase 1 | 本地数据库与项目文件 | 不运行 Neo4j 和 Docker 也能创建语言和词条                   |
+| Phase 2 | Lexurgy Sidecar      | 用户无需安装 Java 即可运行音变、验证规则并查看错误          |
+| Phase 3 | 词典与造词           | 支持多词义、语素、确定性造词、审核、批量提交和撤销          |
+| Phase 4 | LLM                  | 密钥加密；结构化提案；模型不能直写正式数据；无 LLM 模式可用 |
+| Phase 5 | 历史与语言树         | 支持语言阶段、分支、词源、借词事件和 Lexurgy 演化链         |
+| Phase 6 | Analysis Sidecar     | PanPhon、Morfessor、借词适配和逆向分析独立打包              |
+| Phase 7 | 正式发布             | 安装、更新、备份、恢复、完整测试及跨平台构建                |
 
 ## 当前第一步
 
@@ -208,12 +209,17 @@ fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
 
 详细任务、命令、验收证据和风险预案见 [`docs/phase-0-development-plan.md`](docs/phase-0-development-plan.md)。
 
-1. Fork Lexurgy App 并建立 `fishtongue-desktop`；
-2. 加入 Tauri 2；
-3. 将现有 `/sc` 页面改造为可静态导出的桌面编辑器切片；
-4. 验证 CodeMirror 编辑器正常工作；
-5. 生成可安装、可启动的 Windows 安装程序；
-6. 记录现有前端测试基线。
+当前进度和未通过项见
+[`docs/phase-0/acceptance-report.md`](docs/phase-0/acceptance-report.md)。
+
+- [x] Fork Lexurgy App 并建立 `fishtongue-desktop`；
+- [x] 加入 Tauri 2；
+- [x] 将现有 `/sc` 页面改造为可静态导出的桌面编辑器切片；
+- [x] 在真实 Tauri 窗口验证 CodeMirror 输入、撤销、行号和语法高亮；
+- [x] 生成 Windows x64 NSIS 安装程序；
+- [x] 记录现有前端测试基线；
+- [x] 完成 Cypress 组件测试；
+- [ ] 完成干净 Windows 安装、卸载、重装验收。
 
 Phase 0 未通过前，不开始大规模 Neo4j 迁移，也不重写 Lexurgy 核心。
 

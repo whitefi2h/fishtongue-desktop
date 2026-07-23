@@ -4,8 +4,12 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "export",
   reactStrictMode: true,
-  pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
+  pageExtensions: ["desktop.tsx"],
+  images: {
+    unoptimized: true,
+  },
 };
 
 function stableHeadingIds() {

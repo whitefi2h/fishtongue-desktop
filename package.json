@@ -1,10 +1,11 @@
 {
-  "name": "lexurgy-app",
-  "version": "0.1.0",
+  "name": "fishtongue-desktop",
+  "version": "0.0.1-phase.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:desktop": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest --watch",
@@ -15,7 +16,11 @@
     "db:reset": "node cypress/db/dbReset.mjs",
     "db:seed:examplish": "node cypress/db/dbSeedExamplish.mjs",
     "db:seed:examplish:lexicon": "node cypress/db/dbSeedExamplishLexicon.mjs",
-    "sc-grammar": "lezer-generator src/sc/sc.grammar -o src/sc/scParser.js"
+    "sc-grammar": "lezer-generator src/sc/sc.grammar -o src/sc/scParser.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --bundles nsis",
+    "verify:phase0": "npm run test-ci && npm run cypress-unit && npm run build:desktop"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.15.0",
@@ -61,6 +66,7 @@
   "devDependencies": {
     "@jest/globals": "^29.7.0",
     "@lezer/generator": "^1.7.0",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^6.2.0",
     "@testing-library/react": "^14.1.2",
     "@testing-library/user-event": "^14.5.2",
