@@ -1,0 +1,55 @@
+# FishTongue Agent Instructions
+
+## 开始工作
+
+- 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
+- Phase 0 按 `docs/phase-0-development-plan.md` 实施；未进入的阶段标记 N/A，不得伪造完成。
+- 当前仓库只有规划文档；不要假设代码、命令或测试已经存在。
+- 实施前检查真实目录、清单、锁文件、测试和未提交改动。
+- 最终用户只安装 FishTongue；基础功能不得依赖登录、云服务或 LLM。
+
+## 桌面架构
+
+- 目标是单机、单用户、本地优先的 Tauri 2 桌面应用。
+- Next.js/React 只做静态前端；构建必须支持 `output: "export"`。
+- 不新增 API Routes、Server Actions、SSR、NextAuth 或 Node 服务端依赖。
+- Tauri Rust 层负责窗口、菜单、文件、设置、SQLite、Sidecar 和安装能力。
+- 数据流固定为 `UI → Service → Repository → Tauri SQL Plugin → SQLite`。
+- React 页面不得直接执行 SQL、访问项目文件或管理子进程。
+- SQLite 是正式项目数据的唯一权威来源；不恢复 Neo4j 主数据源。
+
+## 项目数据与安全
+
+- 项目使用 `.fishtongue` 容器，包含版本清单、SQLite 数据库和资源目录。
+- 数据库与文件格式变更必须提供可测试迁移。
+- 保存、备份或迁移失败时，不得覆盖最后一个可用项目文件。
+- 普通设置存 Tauri Store；API Key 等秘密存加密存储。
+- 秘密不得进入 SQLite 明文、JSON、`localStorage`、项目包、日志或测试夹具。
+- Tauri capability 只授予所需的文件、Shell、SQL 和网络范围。
+- LLM 不能直接提交、删除、覆盖词典或应用语言演化。
+
+## Sidecar 与语言学约束
+
+- Lexurgy 保持 Kotlin/JVM；禁止重写规则语言、ANTLR 或音变核心。
+- Lexurgy 本地 API 只监听 `127.0.0.1` 随机端口。
+- Tauri 负责 Sidecar 启动、健康检查、超时、日志和退出清理。
+- Analysis Sidecar 按需启动，返回结构化 JSON，任务结束后关闭。
+- Sidecar 异常不得损坏项目或留下不可控进程。
+- 一词多义使用独立 `Sense`；词源和借词使用可追踪关系。
+- 历史演化创建新 `LanguageStage`，不得覆盖祖语。
+- LLM、Morfessor 和 PanPhon 只提出候选或证据。
+- 批量生成必须经过审核，并保存输入、规则版本和随机种子。
+
+## 质量、上游与许可证
+
+- 运行适用的 Jest、Cypress、Rust、迁移和上游 Lexurgy 测试。
+- 桌面改动至少验证静态导出、安装启动、项目往返保存和 Sidecar 清理。
+- 数据改动验证迁移、备份、失败恢复和旧项目兼容。
+- 通用 Lexurgy 修复优先回馈上游；FishTongue 功能放在独立模块。
+- 不删除 GPL-3.0、原作者版权或第三方许可证声明。
+- 发布前核对 Sidecar、JRE、Python 产物和数据集的再分发条件。
+
+## 沟通
+
+- 维护者是零代码基础用户；使用简明中文，先给结果，再解释术语。
+- 每次交付说明变更、验收步骤、测试结果、未验证项和剩余风险。
