@@ -50,7 +50,9 @@ Visual Studio C++ 工具使用 `vswhere` 检测；WebView2 使用 Windows 注册
 4. 使用单一 npm 进程重新执行干净安装，并设置 `CYPRESS_INSTALL_BINARY=0`，避免可选的 Cypress 二进制下载再次阻塞 npm 包安装；
 5. 只把最后一次独占运行的结果计入正式基线。
 
-最终独占运行结果：退出码 0，34 秒安装 1344 个包。`npm ls --depth=0` 通过，没有缺失依赖。
+上游基线独占运行结果：退出码 0，34 秒安装 1344 个包。加入 Tauri CLI 后，
+又从当前锁文件执行一次全新 `npm ci`：退出码 0，53 秒安装 1346 个包。
+`npm ls --depth=0` 通过，没有缺失依赖。
 
 ## Tauri 实际复核
 
