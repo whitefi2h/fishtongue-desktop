@@ -1,0 +1,25 @@
+import MdxLayout from "@/components/MdxLayout";
+import Breadcrumb from "@/components/Breadcrumb";
+
+<Breadcrumb
+  baseUrl="/sc"
+  pathComponents={[
+    { name: "Lexurgy SC Documentation", path: "docs" },
+    { name: "Tutorial", path: "tutorial" },
+  ]}
+/>
+
+# Lexurgy Sound Changer Tutorial
+
+This is a tour through the features of Lexurgy SC. Start here if you're new to Lexurgy.
+
+## Contents
+
+- [Getting Started](/sc/docs/tutorial/basics)
+- [Building Complex Rules](/sc/docs/tutorial/controlflow)
+- [Using Features](/sc/docs/tutorial/features)
+- [Using Syllables](/sc/docs/tutorial/syllables)
+
+export default function MdxPage({ children }) {
+  return <MdxLayout>{children}</MdxLayout>;
+}

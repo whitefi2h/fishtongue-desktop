@@ -1,0 +1,65 @@
+name: Commit Tests
+on: push
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v3
+      - name: Install Dependencies
+        run: npm ci
+      - name: Run Unit Tests
+        run: npm run test-ci
+  cypress-component:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v3
+        with:
+          path: lexurgy-app
+      - name: Run Cypress
+        uses: cypress-io/github-action@v5
+        with:
+          component: true
+          working-directory: lexurgy-app
+  cypress-end-to-end:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v3
+        with:
+          path: lexurgy-app
+      - name: Checkout services repo
+        uses: actions/checkout@v3
+        with:
+          repository: def-gthill/lexurgy
+          path: lexurgy
+      - name: Create environment file
+        run: |
+          echo "NODE_ENV=development" >> lexurgy-app/.env.local
+          echo "NEXTAUTH_URL=http://localhost:3000" >> lexurgy-app/.env.local
+          echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" >> lexurgy-app/.env.local
+          echo "NEXTAUTH_ADMIN_EMAIL=${{ secrets.NEXTAUTH_ADMIN_EMAIL }}" >> lexurgy-app/.env.local
+          echo "NEXTAUTH_EXPERIMENTAL_FEATURE_EMAILS=${{ secrets.NEXTAUTH_EXPERIMENTAL_FEATURE_EMAILS }}" >> lexurgy-app/.env.local
+          echo "NEXTAUTH_TEST_USER_EMAILS=${{ secrets.NEXTAUTH_TEST_USER_EMAILS }}" >> lexurgy-app/.env.local
+          echo "NEO4J_URL=bolt://0.0.0.0:7687" >> lexurgy-app/.env.local
+          echo "NEO4J_USERNAME=neo4j" >> lexurgy-app/.env.local
+          echo "LEXURGY_SERVICES_URL=http://localhost:8080" >> lexurgy-app/.env.local
+          echo "LEXURGY_SERVICES_API_KEY=exampleApiKey" >> lexurgy-app/.env.local
+      - name: Build server
+        run: ./gradlew :api:stage
+        working-directory: ./lexurgy
+      - name: Start server
+        uses: isbang/compose-action@v1.5.1
+        with:
+          compose-file: lexurgy-app/docker-compose.yml
+      - name: Run Cypress
+        uses: cypress-io/github-action@v5
+        with:
+          start: npm run dev
+          wait-on: "http://localhost:7474, http://localhost:8080"
+          working-directory: lexurgy-app
+        env:
+          CYPRESS_defaultUserEmail: ${{ secrets.NEXTAUTH_ADMIN_EMAIL }}
+          CYPRESS_secondUserEmail: ${{ secrets.NEXTAUTH_EXPERIMENTAL_FEATURE_EMAILS }}
+          CYPRESS_randomUserEmail: ${{ secrets.NEXTAUTH_TEST_USER_EMAILS }}

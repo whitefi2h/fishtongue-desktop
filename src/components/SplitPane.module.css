@@ -1,0 +1,13 @@
+.root {
+  display: flex;
+}
+
+.divider {
+  border-style: solid;
+  border-color: var(--foreground-muted);
+  cursor: col-resize;
+}
+
+.facet {
+  padding: 4px;
+}

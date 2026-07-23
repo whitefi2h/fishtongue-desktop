@@ -1,0 +1,95 @@
+.NavigationMenuRoot {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+}
+
+.NavigationMenuList {
+  display: flex;
+  justify-content: stretch;
+  align-items: center;
+  background-color: var(--primary);
+  color: var(--foreground-always-light);
+  padding: 4px;
+  list-style: none;
+}
+
+.leftGroup {
+  display: flex;
+  flex: 1;
+  justify-content: left;
+  align-items: center;
+}
+
+.centreGroup {
+  display: flex;
+  flex-grow: 0;
+  justify-content: center;
+}
+
+.rightGroup {
+  display: flex;
+  flex: 1;
+  justify-content: right;
+}
+
+.rightGroupNarrow {
+  display: none;
+}
+
+.NavigationMenuLink {
+  display: block;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 1.3rem;
+  text-wrap: nowrap;
+}
+
+.NavigationMenuLink:hover,
+.NavigationMenuLink[data-active] {
+  background-color: var(--primary-dark);
+}
+
+.narrowNavTriggerItem {
+  position: relative;
+}
+
+.narrowNavTriggerIcon {
+  width: 24px;
+  height: 24px;
+}
+
+.narrowNavContent {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  background-color: var(--primary);
+  padding: 4px;
+}
+
+.narrowNavList {
+  list-style: none;
+  padding: 0;
+}
+
+.narrowNavSeparator {
+  height: 1px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  background-color: var(--foreground-always-light);
+}
+
+@media (max-width: 875px) {
+  .centreGroup {
+    display: none;
+  }
+
+  .rightGroupWide {
+    display: none;
+  }
+
+  .rightGroupNarrow {
+    display: flex;
+  }
+}

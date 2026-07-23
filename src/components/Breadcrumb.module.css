@@ -1,0 +1,12 @@
+.root {
+  position: sticky;
+  top: 56px;
+  z-index: 998;
+  display: flex;
+  align-items: center;
+  background-color: var(--primary);
+}
+
+.link {
+  padding: 4px;
+}

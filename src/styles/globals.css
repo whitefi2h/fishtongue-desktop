@@ -1,0 +1,305 @@
+:root {
+  --background: hsl(0, 0%, 90%);
+  --foreground: hsl(0, 0%, 0%);
+  --foreground-muted: hsl(0, 0%, 20%);
+  --card-background: hsl(0, 0%, 80%);
+  --highlight1-background: hsl(0, 0%, 75%);
+  --highlight2-background: hsl(0, 0%, 70%);
+  --editor1-background: hsl(60, 33%, 1%);
+  --editor2-background: hsl(140, 25%, 75%);
+  --editor3-background: hsl(230, 25%, 75%);
+  --editor4-background: hsl(320, 25%, 75%);
+  --foreground-always-dark: hsl(0, 0%, 0%);
+  --foreground-always-light: hsl(0, 0%, 100%);
+
+  --primary-hue: 246;
+  --primary-sat: 25%;
+  --primary-lit: 50%;
+  --primary: hsl(var(--primary-hue), var(--primary-sat), var(--primary-lit));
+  --primary-dark: hsl(
+    var(--primary-hue),
+    var(--primary-sat),
+    calc(var(--primary-lit) - 10%)
+  );
+  --primary-grey: hsl(
+    var(--primary-hue),
+    calc(var(--primary-sat) - 15%),
+    var(--primary-lit)
+  );
+
+  --danger-hue: 0;
+  --danger-sat: 90%;
+  --danger-lit: 40%;
+  --danger: hsl(var(--danger-hue), var(--danger-sat), var(--danger-lit));
+  --danger-dark: hsl(
+    var(--danger-hue),
+    var(--danger-sat),
+    calc(var(--danger-lit) - 10%)
+  );
+  --danger-grey: hsl(
+    var(--danger-hue),
+    calc(var(--danger-sat) - 70%),
+    var(--danger-lit)
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: hsl(0, 0%, 10%);
+    --foreground: hsl(0, 0%, 100%);
+    --foreground-muted: hsl(0, 0%, 80%);
+    --card-background: hsl(0, 0%, 20%);
+    --highlight1-background: hsl(0, 0%, 25%);
+    --highlight2-background: hsl(0, 0%, 30%);
+    --editor1-background: hsl(50, 25%, 20%);
+    --editor2-background: hsl(140, 25%, 25%);
+    --editor3-background: hsl(230, 25%, 25%);
+    --editor4-background: hsl(320, 25%, 25%);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body,
+#__next {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+}
+
+#root,
+#__next {
+  isolation: isolate;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  line-height: calc(1em + 0.5rem);
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  width: 90%;
+  margin: auto;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.card,
+.editor {
+  display: block;
+  padding: 4px;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+
+.card {
+  background-color: var(--card-background);
+}
+
+.editor1 {
+  background-color: var(--editor1-background);
+}
+
+.editor2 {
+  background-color: var(--editor2-background);
+}
+
+.editor3 {
+  background-color: var(--editor3-background);
+}
+
+.editor4 {
+  background-color: var(--editor4-background);
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+  margin-block-start: 0.67em;
+  margin-block-end: 0.67em;
+}
+
+table {
+  border-spacing: 0;
+}
+
+thead tr th {
+  background-color: var(--highlight1-background);
+}
+
+tbody tr:nth-child(even) td {
+  background-color: var(--highlight1-background);
+}
+
+tbody tr:nth-child(odd) td {
+  background-color: var(--highlight2-background);
+}
+
+table th,
+table td {
+  border-right: 1px solid var(--foreground-muted);
+  border-top: none;
+  border-bottom: none;
+}
+
+table th:last-child,
+table td:last-child {
+  border-right: none;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+input,
+textarea,
+select,
+.cm-editor {
+  background-color: var(--background);
+  border-radius: 4px;
+  border: 1px solid var(--foreground-muted);
+}
+
+textarea {
+  resize: none;
+}
+
+textarea.export-preview {
+  white-space: pre;
+  font-family: monospace;
+}
+
+.cm-editor .cm-content {
+  caret-color: var(--foreground-muted);
+}
+
+.cm-editor.cm-focused .cm-cursor {
+  border-left-color: var(--foreground-muted);
+}
+
+.cm-editor .cm-gutters {
+  background-color: var(--card-background);
+  color: var(--foreground);
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.cm-editor .cm-content,
+.cm-editor .cm-gutters {
+  font-size: 1rem;
+}
+
+label {
+  padding: 4px;
+}
+
+button,
+.button {
+  display: inline-block;
+  background-color: var(--primary);
+  color: var(--foreground-always-light);
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover,
+.button:hover {
+  background-color: var(--primary-dark);
+}
+
+button:disabled,
+.button:disabled {
+  background-color: var(--primary-grey);
+}
+
+button.danger {
+  background-color: var(--danger);
+  color: var(--foreground-always-light);
+}
+
+button.danger:hover {
+  background-color: var(--danger-dark);
+}
+
+button.danger:disabled {
+  background-color: var(--danger-grey);
+}
+
+.buttons {
+  padding: 2px;
+}
+
+.buttons > button,
+.buttons > .button {
+  margin: 2px;
+}
+
+.big-button {
+  font-size: 2em;
+  padding: 20px;
+  border-radius: 10px;
+}
+
+.AlertDialogOverlay {
+  background-color: hsl(0 0% 50% / 20%);
+  position: fixed;
+  inset: 0;
+}
+
+.AlertDialogContent {
+  background-color: var(--card-background);
+  border-radius: 6px;
+  border-style: solid;
+  border-color: var(--foreground);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 25px;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+  }
+}
+
+@media (max-width: 650px) {
+  .AlertDialogContent {
+    left: 0;
+    transform: translate(0, -50%);
+  }
+}
