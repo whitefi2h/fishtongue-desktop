@@ -2,9 +2,9 @@
 
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：Phase 0 桌面壳正在验收。Tauri 2 窗口、静态 Next.js 前端和
-> CodeMirror/Lezer 编辑器切片已经实现，本机安装、卸载、重装已通过；
-> SQLite、项目文件与 Lexurgy Sidecar 尚未接入。
+> 当前状态：Phase 0 桌面壳已完成并通过验收。Tauri 2 窗口、静态 Next.js
+> 前端、CodeMirror/Lezer 编辑器切片和 Windows 安装链路均已验证；
+> Phase 1 尚未开始，SQLite、项目文件与 Lexurgy Sidecar 尚未接入。
 
 ## 最终用户体验
 
@@ -204,13 +204,12 @@ fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
 | Phase 6 | Analysis Sidecar     | PanPhon、Morfessor、借词适配和逆向分析独立打包              |
 | Phase 7 | 正式发布             | 安装、更新、备份、恢复、完整测试及跨平台构建                |
 
-## 当前第一步
+## 当前进度
 
-在开发业务功能前先完成 Phase 0：
+Phase 0 已完成。详细任务、命令、验收证据和风险预案见
+[`docs/phase-0-development-plan.md`](docs/phase-0-development-plan.md)。
 
-详细任务、命令、验收证据和风险预案见 [`docs/phase-0-development-plan.md`](docs/phase-0-development-plan.md)。
-
-当前进度和未通过项见
+最终验收结论见
 [`docs/phase-0/acceptance-report.md`](docs/phase-0/acceptance-report.md)。
 
 - [x] Fork Lexurgy App 并建立 `fishtongue-desktop`；
@@ -220,9 +219,11 @@ fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
 - [x] 生成 Windows x64 NSIS 安装程序；
 - [x] 记录现有前端测试基线；
 - [x] 完成 Cypress 组件测试；
-- [ ] 完成干净 Windows 安装、卸载、重装验收。
+- [x] 完成干净 Windows 安装、卸载、重装验收。
 
-Phase 0 未通过前，不开始大规模 Neo4j 迁移，也不重写 Lexurgy 核心。
+下一步可以规划和实施 Phase 1“本地数据库与项目文件”。后续仍须遵循
+`UI → Service → Repository → Tauri SQL Plugin → SQLite` 数据链路，
+不得恢复 Neo4j 主数据源，也不得重写 Lexurgy 核心。
 
 ## 开发与发布边界
 
