@@ -345,4 +345,27 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
       expect(document.activeElement?.getAttribute("title")).to.equal("全局搜索");
     });
   });
+
+  it("exposes accessible names, status updates, and compound-control focus", () => {
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+
+    cy.get("svg").each(($icon) => {
+      expect($icon.attr("aria-hidden")).to.equal("true");
+    });
+    cy.get("[aria-live='polite']").should("exist").and("have.attr", "aria-atomic", "true");
+    cy.get("button").each(($button) => {
+      const accessibleName = $button.attr("aria-label")?.trim() || $button.text().trim();
+      expect(accessibleName, "every button has an accessible name").not.to.equal("");
+    });
+
+    cy.get("button[title='全局搜索']").click();
+    cy.get("input[name='global-search']")
+      .should("have.attr", "aria-label", "搜索页面、语言、词条或命令")
+      .and("have.attr", "autocomplete", "off")
+      .focus();
+    cy.get("input[name='global-search']").parent().should(($field) => {
+      expect(getComputedStyle($field[0]).outlineStyle).to.equal("solid");
+    });
+  });
 });

@@ -17,7 +17,24 @@ for (const file of uiFiles) {
   if (file.endsWith(".css") && /#[0-9a-fA-F]{3,8}\b/.test(source)) failures.push(`${file}: raw color`);
   if (file.endsWith(".css") && /z-index:\s*\d+/.test(source)) failures.push(`${file}: numeric z-index`);
   if (/Georgia|radial-gradient|linear-gradient|backdrop-filter/.test(source)) failures.push(`${file}: prohibited visual style`);
+  if (file.endsWith(".tsx") && /<[A-Z][A-Za-z0-9]*Icon(?![^>]*aria-hidden)[^>]*\/>/s.test(source)) {
+    failures.push(`${file}: decorative icon exposed to assistive technology`);
+  }
+  if (file.endsWith(".tsx") && /<tr[^>]*(onClick|onDoubleClick)/s.test(source)) {
+    failures.push(`${file}: non-semantic interactive table row`);
+  }
 }
+
+const desktopUi = fs.readFileSync(path.join(uiRoot, "FishTongueDesktopApp.tsx"), "utf8");
+const desktopCss = fs.readFileSync(path.join(uiRoot, "FishTongueDesktopApp.module.css"), "utf8");
+if (!desktopUi.includes('aria-live="polite"')) failures.push("desktop status updates need an aria-live region");
+if (!desktopCss.includes("color-scheme:light") || !desktopCss.includes("color-scheme:dark")) {
+  failures.push("desktop themes must declare native control color schemes");
+}
+if (!desktopCss.includes(".searchField:focus-within") || !desktopCss.includes(".commandInput:focus-within")) {
+  failures.push("compound search controls must retain a visible focus indicator");
+}
+if (!desktopCss.includes("overscroll-behavior:contain")) failures.push("modal scrolling must be contained");
 
 const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 const windowConfig = tauriConfig.app.windows[0];

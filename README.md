@@ -254,12 +254,14 @@ Phase 1.5 的完整设计基线和文档冲突处理结果见
 - [x] 完成 Phase 1 外部 Windows 人工验收。
 - [x] `frontend-design` 已完成 Phase 1.5 自定义窗口、桌面工作区和高保真页面原型。
 - [x] `emil-design-eng` 已完成 Phase 1.5 交互精修、层级调整和两轮响应式问题修复。
-- [ ] 由 `web-design-guidelines` 完成最终验收与修复。
+- [x] `web-design-guidelines` 已完成 Phase 1.5 最终验收与无障碍修复。
 
 交互精修的变更说明、截图和测试证据见
 [`docs/phase-1-5/emil-design-engineering-report.md`](docs/phase-1-5/emil-design-engineering-report.md)。
 项目/语言层级和受限宽度修订见
 [`docs/phase-1-5/hierarchy-responsive-revision-report.md`](docs/phase-1-5/hierarchy-responsive-revision-report.md)。
+最终 Web Interface Guidelines 验收结果见
+[`docs/phase-1-5/web-design-guidelines-acceptance-report.md`](docs/phase-1-5/web-design-guidelines-acceptance-report.md)。
 
 Phase 1 已完成验收。Phase 2 在 Phase 1.5 之后实施，并继续遵循
 `UI → Service → Repository →
