@@ -14,6 +14,8 @@
 // ***********************************************************
 
 import "@/styles/globals.css";
+import "../../design-system/fishtongue/tokens.css";
+import "@/styles/fishtongue-desktop.css";
 
 // Import commands.js using ES2015 syntax:
 import "./commands";

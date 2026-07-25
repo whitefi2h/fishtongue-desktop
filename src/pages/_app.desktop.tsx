@@ -1,5 +1,7 @@
 import "@/styles/globals.css";
 import "@/styles/sc.css";
+import "../../design-system/fishtongue/tokens.css";
+import "@/styles/fishtongue-desktop.css";
 import type { AppProps } from "next/app";
 import Head from "next/head";
 

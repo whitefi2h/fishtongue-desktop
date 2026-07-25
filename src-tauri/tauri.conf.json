@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FishTongue",
-  "version": "0.0.1-phase.0",
+  "version": "0.1.0-phase.1",
   "identifier": "com.fishtongue.desktop",
   "build": {
     "frontendDist": "../out",
@@ -13,12 +13,16 @@
     "windows": [
       {
         "title": "FishTongue",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 640,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1360,
+        "minHeight": 860,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "shadow": true,
+        "dataDirectory": "webview-phase-1",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-http-cache"
       }
     ],
     "security": {

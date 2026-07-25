@@ -1,0 +1,115 @@
+:root {
+  color-scheme: light;
+
+  --ft-color-bg-app: #f5f6f8;
+  --ft-color-bg-sidebar: #f0f2f5;
+  --ft-color-bg-workspace: #ffffff;
+  --ft-color-bg-subtle: #f9fafb;
+  --ft-color-bg-hover: #f0f2f5;
+  --ft-color-bg-selected: #eef2ff;
+  --ft-color-bg-disabled: #f0f2f5;
+  --ft-color-text-primary: #17191d;
+  --ft-color-text-secondary: #4d5562;
+  --ft-color-text-tertiary: #5f6875;
+  --ft-color-text-disabled: #7b8491;
+  --ft-color-border-subtle: #e5e8ed;
+  --ft-color-border-default: #d9dde5;
+  --ft-color-border-strong: #b8c0cc;
+  --ft-color-accent: #4f46e5;
+  --ft-color-accent-hover: #4338ca;
+  --ft-color-accent-soft: #eef2ff;
+  --ft-color-on-accent: #ffffff;
+  --ft-color-on-accent-soft: #3730a3;
+  --ft-color-focus: #4f46e5;
+  --ft-color-danger: #b91c1c;
+  --ft-color-warning: #a16207;
+  --ft-color-success: #15803d;
+  --ft-color-scrim: rgb(17 19 24 / 48%);
+
+  --ft-font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI",
+    "Noto Sans SC", sans-serif;
+  --ft-font-code: "Cascadia Code", "Cascadia Mono", "SFMono-Regular",
+    Consolas, monospace;
+  --ft-font-linguistic: "Segoe UI", "Noto Sans", "Charis SIL", sans-serif;
+
+  --ft-space-0-5: 2px;
+  --ft-space-1: 4px;
+  --ft-space-1-5: 6px;
+  --ft-space-2: 8px;
+  --ft-space-3: 12px;
+  --ft-space-4: 16px;
+  --ft-space-5: 20px;
+  --ft-space-6: 24px;
+  --ft-space-8: 32px;
+  --ft-space-10: 40px;
+
+  --ft-radius-xs: 2px;
+  --ft-radius-sm: 4px;
+  --ft-radius-md: 6px;
+  --ft-radius-lg: 8px;
+
+  --ft-shadow-overlay: 0 8px 24px rgb(17 19 24 / 14%);
+  --ft-shadow-modal: 0 18px 48px rgb(17 19 24 / 22%);
+
+  --ft-z-base: 0;
+  --ft-z-sticky: 10;
+  --ft-z-dropdown: 20;
+  --ft-z-overlay: 30;
+  --ft-z-modal: 40;
+  --ft-z-toast: 50;
+  --ft-z-tooltip: 60;
+
+  --ft-size-titlebar: 36px;
+  --ft-size-menubar: 28px;
+  --ft-size-context-toolbar: 40px;
+  --ft-size-statusbar: 24px;
+
+  --ft-motion-instant: 80ms;
+  --ft-motion-fast: 120ms;
+  --ft-motion-base: 160ms;
+  --ft-motion-panel: 200ms;
+  --ft-motion-modal: 220ms;
+  --ft-motion-modal-exit: 150ms;
+  --ft-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ft-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ft-color-bg-app: #111318;
+  --ft-color-bg-sidebar: #15181e;
+  --ft-color-bg-workspace: #171a21;
+  --ft-color-bg-subtle: #1d212a;
+  --ft-color-bg-hover: #232833;
+  --ft-color-bg-selected: #25264a;
+  --ft-color-bg-disabled: #1d212a;
+  --ft-color-text-primary: #f4f5f7;
+  --ft-color-text-secondary: #c7cbd1;
+  --ft-color-text-tertiary: #9ca3af;
+  --ft-color-text-disabled: #737b88;
+  --ft-color-border-subtle: #292f3a;
+  --ft-color-border-default: #303642;
+  --ft-color-border-strong: #465062;
+  --ft-color-accent: #818cf8;
+  --ft-color-accent-hover: #a5b4fc;
+  --ft-color-accent-soft: #25264a;
+  --ft-color-on-accent: #111318;
+  --ft-color-on-accent-soft: #c7d2fe;
+  --ft-color-focus: #a5b4fc;
+  --ft-color-danger: #fca5a5;
+  --ft-color-warning: #fde68a;
+  --ft-color-success: #86efac;
+  --ft-color-scrim: rgb(0 0 0 / 60%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ft-motion-instant: 0ms;
+    --ft-motion-fast: 0ms;
+    --ft-motion-base: 0ms;
+    --ft-motion-panel: 0ms;
+    --ft-motion-modal: 0ms;
+    --ft-motion-modal-exit: 0ms;
+  }
+}

@@ -1,0 +1,348 @@
+import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
+import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { Evolution, Language, Lexeme } from "@/fishtongue/domain/models";
+import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
+
+class TestWindowPort implements DesktopWindowPort {
+  calls: string[] = [];
+  state: WindowState = { isMaximized: false, isFocused: true };
+  async startDragging() { this.calls.push("drag"); }
+  async minimize() { this.calls.push("minimize"); }
+  async toggleMaximize() { this.calls.push("maximize"); this.state.isMaximized = !this.state.isMaximized; }
+  async close() { this.calls.push("close"); }
+  async isMaximized() { return this.state.isMaximized; }
+  async subscribeWindowState(listener: (state: WindowState) => void) { listener(this.state); return () => undefined; }
+}
+
+class TestApplication implements ProjectApplication {
+  writes = 0;
+  snapshot: ProjectSnapshot | null = null;
+  async createProject(name: string) {
+    const now = new Date().toISOString();
+    this.writes += 1;
+    this.snapshot = {
+      session: {
+        manifest: { formatVersion: 1, databaseSchemaVersion: 1, projectId: "p1", name, createdAt: now, updatedAt: now, appVersion: "test" },
+        sourcePath: "D:\\Languages\\test.fishtongue", requiresSaveAs: false, recovered: false,
+      },
+      project: { id: "p1", name, createdAt: now, updatedAt: now },
+      languages: [], dirty: false,
+    };
+    return this.snapshot;
+  }
+  async openProject() { return this.snapshot; }
+  async importProject() { return this.snapshot; }
+  async saveProject() { this.writes += 1; return this.snapshot!; }
+  async saveProjectAs() { this.writes += 1; return this.snapshot; }
+  async closeProject() { this.snapshot = null; }
+  async recoverProject() { return this.snapshot!; }
+  async discardRecovery() {}
+  async inspectRecovery() { return null; }
+  async listRecentProjects() { return []; }
+  async listLanguages(): Promise<Language[]> { return []; }
+  async createLanguage(): Promise<Language> { throw new Error("prototype must not persist"); }
+  async renameLanguage() { throw new Error("prototype must not persist"); }
+  async deleteLanguage() { throw new Error("prototype must not persist"); }
+  async listLexemes(): Promise<Lexeme[]> { return []; }
+  async saveLexeme() { throw new Error("prototype must not persist"); }
+  async deleteLexeme() { throw new Error("prototype must not persist"); }
+  async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
+  async saveEvolution() { throw new Error("prototype must not persist"); }
+  getSnapshot() { return this.snapshot; }
+}
+
+describe("FishTongue Phase 1.5 desktop prototype", () => {
+  beforeEach(() => cy.viewport(1440, 900));
+
+  it("uses custom chrome and exposes the complete workspace", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.contains("FishTongue").should("be.visible");
+    cy.get("[aria-label='应用菜单']").within(() => {
+      cy.contains("文件").should("be.visible");
+      cy.contains("语言").should("be.visible");
+      cy.contains("工具").should("be.visible");
+    });
+    cy.get("[aria-label='最小化']").click().then(() => expect(windowPort.calls).to.include("minimize"));
+    cy.get("[data-tauri-drag-region]")
+      .trigger("mousedown", { button: 0, detail: 1 })
+      .then(() => expect(windowPort.calls).to.include("drag"));
+    cy.get("[data-tauri-drag-region]")
+      .trigger("mousedown", { button: 0, detail: 2 })
+      .then(() => expect(windowPort.calls).to.include("maximize"));
+    cy.contains("浏览设计原型").click();
+    cy.contains("语言概览").should("be.visible");
+    cy.contains("button", "阿兰语").first().click();
+    cy.contains("词典").should("be.visible").click();
+    cy.contains("筛选与分类").should("be.visible");
+    cy.contains("ama").should("be.visible");
+    expect(app.writes).to.equal(0);
+  });
+
+  it("covers key prototype pages without writing project data", () => {
+    const app = new TestApplication();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    for (const page of ["语言谱系", "历史事件"]) {
+      cy.contains("button", page).first().click();
+      cy.contains("h1", page).should("be.visible");
+      cy.contains("设计预览").should("be.visible");
+    }
+    cy.contains("button", "项目主页").first().click();
+    cy.contains("button", "阿兰语").first().click();
+    for (const page of ["语音学", "形态学", "书写系统", "演化", "语言接触", "辅助翻译"]) {
+      cy.contains("button", page).first().click();
+      cy.contains("h1", page).should("be.visible");
+      cy.contains("设计预览").should("be.visible");
+    }
+    expect(app.writes).to.equal(0);
+  });
+
+  it("renders light and dark layouts at the two acceptance sizes", () => {
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.get("button[title='切换主题']").click();
+    cy.get("[data-theme='light']").should("exist");
+    cy.screenshot("phase-1-5/project-home-light-1440x900");
+    cy.get("button[title='切换界面语言']").click();
+    cy.contains("Project home").should("be.visible");
+    cy.get("[aria-label='Application menu']").within(() => cy.contains("File").should("be.visible"));
+    cy.get("button[title='切换主题']").click();
+    cy.get("[data-theme='dark']").should("exist");
+    cy.screenshot("phase-1-5/project-home-dark-1440x900");
+    cy.viewport(1280, 800);
+    cy.contains("button", "阿兰语").first().click();
+    cy.contains("button", "Lexicon").first().click();
+    cy.screenshot("phase-1-5/lexicon-dark-1280x800");
+    cy.document().then((document) => expect(document.documentElement.scrollWidth).to.equal(1280));
+  });
+
+  it("keeps light tables readable and the compact navigation clean", () => {
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.get("button[title='切换主题']").click();
+    cy.get("[data-theme='light']").should("exist");
+    cy.contains("button", "阿兰语").first().click();
+    cy.contains("button", "形态学").first().click();
+    cy.get("tbody td").first().should(($cell) => {
+      const style = getComputedStyle($cell[0]);
+      expect(style.backgroundColor).to.equal("rgb(255, 255, 255)");
+      expect(style.color).to.equal("rgb(23, 25, 29)");
+    });
+    cy.screenshot("phase-1-5/morphology-light-table-fixed");
+    cy.get("button[aria-label='折叠导航']").click();
+    cy.get("[data-nav-collapsed='true']").should("exist");
+    cy.get("[aria-label='工作区导航']").should(($navigation) => {
+      const element = $navigation[0];
+      expect(element.getBoundingClientRect().width).to.equal(48);
+      expect(getComputedStyle(element).overflowX).to.equal("hidden");
+    });
+    cy.get("button[aria-label='展开导航']").should("be.visible");
+    cy.screenshot("phase-1-5/compact-navigation-fixed");
+  });
+
+  it("separates project and language levels and makes the context path actionable", () => {
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+
+    cy.get("[aria-label='当前位置']").within(() => {
+      cy.contains("北海编年史").should("be.visible");
+      cy.contains("项目主页").should("be.visible");
+      cy.contains("阿兰语").should("not.exist");
+    });
+    cy.get("[aria-label='工作区导航']").within(() => {
+      cy.contains("所有语言").should("be.visible");
+      cy.contains("基本属性").should("not.exist");
+    });
+
+    cy.contains("button", "阿兰语").first().click();
+    cy.get("[aria-label='当前位置']").within(() => {
+      cy.contains("北海编年史").should("be.visible");
+      cy.contains("阿兰语").should("be.visible");
+      cy.contains("圣典时代").should("be.visible");
+      cy.contains("概览").should("be.visible");
+    });
+    cy.get("[aria-label='工作区导航']").within(() => {
+      cy.contains("项目主页").should("be.visible");
+      cy.contains("所有语言").should("not.exist");
+      cy.contains("基本属性").should("be.visible");
+    });
+
+    cy.get("[aria-label='当前位置']").contains("button", "圣典时代").click();
+    cy.get("[role='menu']").contains("button", "诸王时期").click();
+    cy.get("[aria-label='当前位置']").should("contain.text", "诸王时期");
+
+    cy.get("[aria-label='当前位置']").contains("button", "阿兰语").click();
+    cy.get("[role='menu']").contains("button", "诺尔语").click();
+    cy.get("[aria-label='当前位置']").should("contain.text", "诺尔语").and("contain.text", "默认状态");
+    cy.screenshot("phase-1-5/project-language-hierarchy");
+
+    cy.get("[aria-label='当前位置']").contains("button", "北海编年史").click();
+    cy.contains("h1", "项目主页").should("be.visible");
+    cy.get("[aria-label='当前位置']").should("not.contain.text", "诺尔语");
+  });
+
+  it("keeps passive navigation collapse and constrained pages inside the workspace", () => {
+    cy.viewport(1100, 800);
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.contains("button", "阿兰语").first().click();
+    cy.contains("button", "阶段管理").first().click();
+    cy.get("button[title='AI 侧栏']").click();
+
+    cy.get("[aria-label='工作区导航']").should(($navigation) => {
+      const style = getComputedStyle($navigation[0]);
+      expect($navigation[0].getBoundingClientRect().width).to.equal(48);
+      expect(style.scrollbarWidth).to.equal("none");
+    });
+    let workspaceWidth = 0;
+    let aiWidth = 0;
+    cy.get("#main-workspace").then(($workspace) => {
+      workspaceWidth = $workspace[0].getBoundingClientRect().width;
+    });
+    cy.get("aside").contains("AI 助手").parents("aside").then(($sidebar) => {
+      aiWidth = $sidebar[0].getBoundingClientRect().width;
+    });
+    cy.get("button[aria-label='展开导航']").click();
+    cy.get("[data-nav-overlay-open='true']").should("exist");
+    cy.get("[aria-label='工作区导航']").should(($navigation) => {
+      expect($navigation[0].getBoundingClientRect().width).to.equal(220);
+      expect(getComputedStyle($navigation[0]).position).to.equal("absolute");
+    });
+    cy.get("#main-workspace").should(($workspace) => {
+      expect($workspace[0].getBoundingClientRect().width).to.equal(workspaceWidth);
+    });
+    cy.get("aside").contains("AI 助手").parents("aside").should(($sidebar) => {
+      expect($sidebar[0].getBoundingClientRect().width).to.equal(aiWidth);
+    });
+    cy.screenshot("phase-1-5/navigation-overlay-constrained");
+    cy.get("#main-workspace").click("topRight");
+    cy.get("[data-nav-overlay-open='false']").should("exist");
+    cy.get("[aria-label='工作区导航']").should(($navigation) => {
+      expect($navigation[0].getBoundingClientRect().width).to.equal(48);
+    });
+    cy.get("#main-workspace").should(($workspace) => {
+      expect($workspace[0].scrollWidth).to.be.at.most($workspace[0].clientWidth);
+    });
+    cy.get("#main-workspace input").each(($input) => {
+      const input = $input[0].getBoundingClientRect();
+      const workspace = Cypress.$("#main-workspace")[0].getBoundingClientRect();
+      expect(input.right).to.be.at.most(workspace.right);
+    });
+    cy.get("[aria-label='工作区导航']").should(($navigation) => {
+      expect($navigation[0].scrollHeight).to.be.at.most($navigation[0].clientHeight);
+    });
+    cy.get("aside").contains("AI 助手").parents("aside").within(() => {
+      cy.contains("检查当前音位表").should("be.visible");
+      cy.get("textarea").should("be.visible");
+    });
+    cy.get("aside").contains("AI 助手").parents("aside").find("div").filter((_index, element) => {
+      return getComputedStyle(element).overflowY === "auto";
+    }).first().should(($conversation) => {
+      expect($conversation[0].scrollHeight).to.be.at.most($conversation[0].clientHeight);
+    });
+    cy.screenshot("phase-1-5/language-level-ai-constrained");
+  });
+
+  it("returns to the previous workspace page from the context toolbar", () => {
+    cy.viewport(1360, 860);
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.get("button[aria-label='返回上一页']").should("be.disabled");
+    cy.contains("button", "阿兰语").first().click();
+    cy.contains("button", "基本属性").first().click();
+    cy.contains("h1", "基本属性").should("be.visible");
+    cy.get("button[aria-label='返回上一页']").should("be.enabled").click();
+    cy.contains("h1", "概览").should("be.visible");
+    cy.get("body").trigger("keydown", { altKey: true, key: "ArrowLeft" });
+    cy.contains("h1", "项目主页").should("be.visible");
+  });
+
+  it("automatically narrows the AI sidebar without clipping its contents", () => {
+    cy.viewport(1440, 900);
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.get("button[title='AI 侧栏']").click();
+
+    let standardWidth = 0;
+    cy.get("aside").contains("AI 助手").parents("aside").then(($sidebar) => {
+      standardWidth = $sidebar[0].getBoundingClientRect().width;
+      expect(standardWidth).to.be.within(260, 360);
+    });
+
+    cy.viewport(1100, 800);
+    cy.get("aside").contains("AI 助手").parents("aside").should(($sidebar) => {
+      const sidebar = $sidebar[0];
+      expect(sidebar.getBoundingClientRect().width).to.be.within(260, standardWidth);
+      expect(sidebar.scrollWidth).to.be.at.most(sidebar.clientWidth);
+    }).within(() => {
+      cy.contains("从当前页面开始").should("be.visible");
+      cy.contains("检查当前音位表").should("be.visible");
+      cy.get("label").last().should(($label) => {
+        const label = $label[0].getBoundingClientRect();
+        const sidebar = $label[0].closest("aside")!.getBoundingClientRect();
+        expect(label.right).to.be.at.most(sidebar.right);
+      });
+      cy.get("textarea").should(($textarea) => {
+        const textarea = $textarea[0].getBoundingClientRect();
+        const sidebar = $textarea[0].closest("aside")!.getBoundingClientRect();
+        expect(textarea.right).to.be.at.most(sidebar.right);
+      });
+    });
+    cy.screenshot("phase-1-5/ai-sidebar-responsive-minimum");
+  });
+
+  it("keeps the languages table readable and selection subtle at minimum width", () => {
+    cy.viewport(1360, 860);
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.contains("浏览设计原型").click();
+    cy.contains("button", "所有语言").first().click();
+    cy.get("button[title='AI 侧栏']").click();
+
+    cy.get("table").should(($table) => {
+      expect(getComputedStyle($table[0]).tableLayout).to.equal("fixed");
+      expect($table[0].scrollWidth).to.be.at.least(780);
+    });
+    cy.get("table tbody td").each(($cell) => {
+      expect(getComputedStyle($cell[0]).whiteSpace).to.equal("nowrap");
+    });
+    cy.get("table tbody button").first().focus().should(($button) => {
+      const style = getComputedStyle($button[0]);
+      expect(style.backgroundColor).to.equal("rgba(0, 0, 0, 0)");
+      expect($button[0].getBoundingClientRect().width).to.be.greaterThan(80);
+    });
+    cy.screenshot("phase-1-5/languages-dark-minimum-window");
+
+    cy.get("button[title='切换主题']").click();
+    cy.get("[data-theme='light']").should("exist");
+    cy.get("table tbody button").first().focus().should(($button) => {
+      expect(getComputedStyle($button[0]).backgroundColor).to.equal("rgba(0, 0, 0, 0)");
+    });
+    cy.screenshot("phase-1-5/languages-light-minimum-window");
+    cy.document().then((document) => expect(document.documentElement.scrollWidth).to.equal(1360));
+  });
+
+  it("keeps menu and dialog focus predictable", () => {
+    cy.mount(<FishTongueDesktopApp application={new TestApplication()} windowPort={new TestWindowPort()} />);
+    cy.get("body").trigger("keydown", { key: "Alt" });
+    cy.focused().should("contain.text", "文件");
+    cy.focused().trigger("keydown", { key: "ArrowDown" });
+    cy.focused().should("contain.text", "新建项目");
+    cy.focused().trigger("keydown", { key: "ArrowDown" });
+    cy.focused().should("contain.text", "打开项目");
+    cy.get("body").trigger("keydown", { key: "Escape" });
+    cy.focused().should("contain.text", "文件");
+
+    cy.contains("浏览设计原型").click();
+    cy.get("button[title='全局搜索']").focus().click();
+    cy.get("[role='dialog']").should("be.visible");
+    cy.focused().should("have.attr", "data-dialog-initial-focus");
+    cy.get("[role='dialog']").trigger("keydown", { key: "Escape" });
+    cy.get("[role='dialog']").should("not.exist");
+    cy.document().should((document) => {
+      expect(document.activeElement?.getAttribute("title")).to.equal("全局搜索");
+    });
+  });
+});

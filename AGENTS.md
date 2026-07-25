@@ -4,7 +4,9 @@
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
 - 再读 `.context/CONTEXT.md`；它记录当前代码的组合根、依赖方向和跨阶段接口边界。
-- Phase 0 按 `docs/phase-0-development-plan.md` 实施；未进入的阶段标记 N/A，不得伪造完成。
+- Phase 1 已通过验收；状态见 `docs/phase-1-development-plan.md` 和 `docs/phase-1/acceptance-report.md`。
+- Phase 1.5 的产品、信息架构和 UI/UX 以 `docs/phase-1-5-ui-ux-design-spec.md` 为最高优先级基线；与旧文档冲突时采用该方案。
+- Phase 1.5 先于 Phase 2 实施；不得把设计稿、页面骨架或预留入口写成已经可用的功能。
 - 以真实仓库状态为准；不要假设计划中的代码、命令或测试已经完成。
 - 实施前检查真实目录、清单、锁文件、测试和未提交改动。
 - 最终用户只安装 FishTongue；基础功能不得依赖登录、云服务或 LLM。
@@ -12,6 +14,10 @@
 ## 桌面架构
 
 - 目标是单机、单用户、本地优先的 Tauri 2 桌面应用。
+- UI 必须采用设计方案规定的全窗口桌面工作区；禁止回到营销页式大标题、居中单列、大卡片堆叠和浏览器原生弹窗。
+- `design-system/fishtongue/MASTER.md` 是锁定的视觉令牌源；未经用户明确同意，不得更换风格、颜色、字体、间距、圆角、阴影、图标或动效令牌。
+- UI 流程固定为 `ui-ux-pro-max → frontend-design → emil-design-eng → web-design-guidelines`；`frontend-design` 是唯一主设计师。
+- 所有新增界面使用统一组件和中英文资源；不为手机端设计，至少适配 `1280 × 800`。
 - Next.js/React 只做静态前端；构建必须支持 `output: "export"`。
 - 不新增 API Routes、Server Actions、SSR、NextAuth 或 Node 服务端依赖。
 - Tauri Rust 层负责窗口、菜单、文件、设置、SQLite、Sidecar 和安装能力。
@@ -37,12 +43,16 @@
 - Analysis Sidecar 按需启动，返回结构化 JSON，任务结束后关闭。
 - Sidecar 异常不得损坏项目或留下不可控进程。
 - 一词多义使用独立 `Sense`；词源和借词使用可追踪关系。
-- 历史演化创建新 `LanguageStage`，不得覆盖祖语。
+- Language 可不显示阶段，但数据使用内部默认状态；启用阶段后，历史演化创建新 `LanguageStage`，不得覆盖源状态。
+- 无记录阶段只保存背景和关系，不得伪造词典、音系、形态或可翻译数据。
+- 轻量方言采用继承加差异；任何有数据阶段在应用层都必须解析为完整有效状态。
 - LLM、Morfessor 和 PanPhon 只提出候选或证据。
 - 批量生成必须经过审核，并保存输入、规则版本和随机种子。
+- AI 与安全脚本默认只读；修改只能形成提案或补丁，经验证、预览和用户确认后提交。
 
 ## 质量、上游与许可证
 
+- Phase 1 总验收命令是 `npm run verify:phase1`；Phase 1.5 开发需新增对应的可重复总验收命令。
 - 运行适用的 Jest、Cypress、Rust、迁移和上游 Lexurgy 测试。
 - 桌面改动至少验证静态导出和安装启动；项目保存从 Phase 1、Sidecar 清理从 Phase 2 起强制验证。
 - 数据改动验证迁移、备份、失败恢复和旧项目兼容。
