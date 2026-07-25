@@ -19,6 +19,10 @@ Phase 1.5 的页面、交互和功能信息架构见
 - 窗口操作必须经 `DesktopWindowPort`，UI 不得直接导入 Tauri Window API。
 - `src-tauri/src/project_files.rs` 独占 `.fishtongue` 解包、保存、备份和恢复。
 - 活动数据库固定为应用配置目录下 `active-project/project.db`。
+- `src-tauri/src/lexurgy.rs` 独占 Lexurgy 进程、认证令牌、回环 HTTP、超时、
+  取消、日志和退出清理；React 只能经 Application Port 和 Tauri Command 使用。
+- `engine/engine-lock.json` 固定独立引擎提交、上游提交、协议、发布包、Fat JAR、
+  Temurin 源和 SHA-256，构建不得接受不匹配产物。
 
 ## Phase 1.5 组合目标
 
@@ -72,7 +76,13 @@ SQLite、文件系统、网络、系统进程或秘密；任何修改先产生�
 - Phase 1.5 在 Schema v1 上设计可测试迁移，引入内部默认状态和可选阶段基础；不得假装现有 Schema 已具备这些字段。
 - Phase 1.5 的 AI 侧栏是受控入口和交互壳；完整模型接入仍属于 Phase 4。
 - Phase 1.5 的谱系、演化、开发者工具等 P1 项必须明确区分“真实能力”和“可交互原型”。
-- Phase 2 扩展 `SoundChangeEngine` Port，并用 Kotlin Lexurgy Sidecar 实现。
+- Phase 2 已扩展 `SoundChangeEngine` 并新增独立 `InflectionEngine` Port；
+  `TauriLexurgyEngineAdapter` 是唯一可调用引擎 Command 的前端适配器。
+- Schema v2 新增 `inflection_systems` 和 `inflection_test_cases`。规则与测试输入
+  持久化，生成结果不持久化；v1 项目只在活动工作区迁移，保存前仍走备份保护。
+- 真实项目的 Evolution 和“形态学 → 屈折系统”可以启动引擎；设计原型模式不得
+  启动 Sidecar、访问 Repository 或显示伪造运行结果。
+- 音变和屈折预览不得修改 Lexeme、Sense 或 LanguageStage。
 - Phase 1 capability 只开放 Dialog、SQL 和 Store；没有 Shell、HTTP 或通用文件系统权限。
 
 ## 常用验证
@@ -85,6 +95,8 @@ npm run audit:phase1
 cargo check --manifest-path .\src-tauri\Cargo.toml
 npm run tauri:build
 npm run verify:phase1
+npm run verify:phase1-ui
+npm run verify:phase2
 ```
 
 如果某项因本机工具或下载条件未运行，报告为“未验证”，不得写成通过。

@@ -1,0 +1,32 @@
+{
+  "engineVersion": "1.7.6-fishtongue.1",
+  "protocolVersion": 1,
+  "repository": "https://github.com/whitefi2h/fishtongue-engine",
+  "release": "https://github.com/whitefi2h/fishtongue-engine/releases/tag/engine-1.7.6-fishtongue.1",
+  "engineSourceCommit": "a8defc541faa8e1615c2fa1ba800fef6d86311ba",
+  "upstreamRepository": "https://github.com/def-gthill/lexurgy",
+  "upstreamCommit": "fa5027711cba3cd6a3f4b6defd0d38181fa98cd4",
+  "artifact": "fishtongue-engine-windows-x64.zip",
+  "artifactSha256": "01B8C364ABB86906662556D8356ADB69E7B99038846C8D60AA4FC6889A3C39AE",
+  "fatJar": "desktop-api-all.jar",
+  "fatJarSha256": "12D34B0A28047C143B55C731F6ECD1EF372946F93E6C7ABB7CFF44AE7111C861",
+  "runtime": {
+    "vendor": "Eclipse Temurin",
+    "majorVersion": 21,
+    "version": "21.0.11+10-LTS",
+    "architecture": "x64",
+    "jdkArchive": "OpenJDK21U-jdk_x64_windows_hotspot_21.0.11_10.zip",
+    "jdkUrl": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_x64_windows_hotspot_21.0.11_10.zip",
+    "jdkSha256": "d3625e7cadf23787ea540229544b6e2ab494b3b54da1801879e583e1dfee0a64",
+    "modules": [
+      "java.base",
+      "java.desktop",
+      "java.instrument",
+      "java.logging",
+      "java.management",
+      "java.naming",
+      "jdk.unsupported"
+    ],
+    "legalDirectoryRequired": true
+  }
+}

@@ -2,6 +2,7 @@ import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/po
 import {
   DatabaseSessionPort,
   EvolutionRepository,
+  InflectionRepository,
   LanguageRepository,
   LexemeRepository,
   ProjectFilePort,
@@ -11,6 +12,7 @@ import {
 import { requiredText } from "@/fishtongue/domain/errors";
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -34,6 +36,7 @@ export default class ProjectSessionService implements ProjectApplication {
     private readonly languages: LanguageRepository,
     private readonly lexemes: LexemeRepository,
     private readonly evolutions: EvolutionRepository,
+    private readonly inflections: InflectionRepository,
     private readonly recentProjects: RecentProjectStore
   ) {}
 
@@ -212,6 +215,26 @@ export default class ProjectSessionService implements ProjectApplication {
       testWords: evolution.testWords.map((word, position) => ({
         ...word,
         word: word.word.trim(),
+        position,
+      })),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  getInflectionSystem(languageId: string): Promise<InflectionSystem> {
+    this.requireSnapshot();
+    return this.inflections.getOrCreate(languageId);
+  }
+
+  async saveInflectionSystem(system: InflectionSystem): Promise<void> {
+    this.requireSnapshot();
+    await this.inflections.save({
+      ...system,
+      rulesVersion: 1,
+      updatedAt: new Date().toISOString(),
+      testCases: system.testCases.map((testCase, position) => ({
+        ...testCase,
+        stem: requiredText(testCase.stem, "词干"),
         position,
       })),
     });

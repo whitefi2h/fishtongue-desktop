@@ -45,6 +45,22 @@ export interface Evolution {
   testWords: EvolutionTestWord[];
 }
 
+export interface InflectionTestCase {
+  id: string;
+  stem: string;
+  categories: Record<string, string>;
+  position: number;
+}
+
+export interface InflectionSystem {
+  id: string;
+  languageId: string;
+  rules: unknown;
+  rulesVersion: number;
+  updatedAt: UtcTimestamp;
+  testCases: InflectionTestCase[];
+}
+
 export interface ProjectManifest {
   formatVersion: number;
   databaseSchemaVersion: number;

@@ -1,5 +1,6 @@
 import {
   EvolutionRepository,
+  InflectionRepository,
   LanguageRepository,
   LexemeRepository,
   ProjectRepository,
@@ -7,6 +8,7 @@ import {
 } from "@/fishtongue/application/ports/ProjectPorts";
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -38,6 +40,17 @@ type EvolutionRow = {
   updated_at: string;
   word_id: string | null;
   word: string | null;
+  position: number | null;
+};
+type InflectionRow = {
+  id: string;
+  language_id: string;
+  rules_json: string;
+  rules_version: number;
+  updated_at: string;
+  test_case_id: string | null;
+  stem: string | null;
+  categories_json: string | null;
   position: number | null;
 };
 
@@ -220,6 +233,71 @@ export class SqliteEvolutionRepository implements EvolutionRepository {
         evolution.soundChanges,
         evolution.updatedAt,
         JSON.stringify(evolution.testWords),
+      ]
+    );
+  }
+}
+
+export class SqliteInflectionRepository implements InflectionRepository {
+  constructor(private readonly database: DatabaseSessionPort) {}
+
+  async getOrCreate(languageId: string): Promise<InflectionSystem> {
+    const rows = await this.database.select<InflectionRow>(
+      `SELECT i.id, i.language_id, i.rules_json, i.rules_version, i.updated_at,
+              t.id AS test_case_id, t.stem, t.categories_json, t.position
+       FROM inflection_systems i
+       LEFT JOIN inflection_test_cases t ON t.inflection_system_id = i.id
+       WHERE i.language_id = $1
+       ORDER BY t.position`,
+      [languageId]
+    );
+    if (!rows.length) {
+      const created: InflectionSystem = {
+        id: uuid(),
+        languageId,
+        rules: "",
+        rulesVersion: 1,
+        updatedAt: new Date().toISOString(),
+        testCases: [],
+      };
+      await this.save(created);
+      return created;
+    }
+    const first = rows[0];
+    return {
+      id: first.id,
+      languageId: first.language_id,
+      rules: JSON.parse(first.rules_json) as unknown,
+      rulesVersion: first.rules_version,
+      updatedAt: first.updated_at,
+      testCases: rows.flatMap((row) =>
+        row.test_case_id &&
+        row.stem !== null &&
+        row.categories_json !== null &&
+        row.position !== null
+          ? [{
+              id: row.test_case_id,
+              stem: row.stem,
+              categories: JSON.parse(row.categories_json) as Record<string, string>,
+              position: row.position,
+            }]
+          : []
+      ),
+    };
+  }
+
+  async save(system: InflectionSystem): Promise<void> {
+    await this.database.execute(
+      `INSERT INTO inflection_write_commands
+       (id, language_id, rules_json, rules_version, updated_at, test_cases_json)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        system.id,
+        system.languageId,
+        JSON.stringify(system.rules),
+        system.rulesVersion,
+        system.updatedAt,
+        JSON.stringify(system.testCases),
       ]
     );
   }

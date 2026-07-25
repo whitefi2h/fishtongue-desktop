@@ -1,6 +1,6 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
-import { Evolution, Language, Lexeme } from "@/fishtongue/domain/models";
+import { Evolution, InflectionSystem, Language, Lexeme } from "@/fishtongue/domain/models";
 import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 
 class TestWindowPort implements DesktopWindowPort {
@@ -48,6 +48,8 @@ class TestApplication implements ProjectApplication {
   async deleteLexeme() { throw new Error("prototype must not persist"); }
   async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
   async saveEvolution() { throw new Error("prototype must not persist"); }
+  async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
+  async saveInflectionSystem() { throw new Error("prototype must not persist"); }
   getSnapshot() { return this.snapshot; }
 }
 

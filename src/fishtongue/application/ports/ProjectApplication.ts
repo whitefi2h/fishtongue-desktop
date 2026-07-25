@@ -1,5 +1,6 @@
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -36,5 +37,7 @@ export interface ProjectApplication {
   deleteLexeme(id: string): Promise<void>;
   getEvolution(languageId: string): Promise<Evolution>;
   saveEvolution(evolution: Evolution): Promise<void>;
+  getInflectionSystem(languageId: string): Promise<InflectionSystem>;
+  saveInflectionSystem(system: InflectionSystem): Promise<void>;
   getSnapshot(): ProjectSnapshot | null;
 }

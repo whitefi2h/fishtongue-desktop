@@ -1,5 +1,6 @@
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -49,6 +50,11 @@ export interface LexemeRepository {
 export interface EvolutionRepository {
   getOrCreate(languageId: string): Promise<Evolution>;
   save(evolution: Evolution): Promise<void>;
+}
+
+export interface InflectionRepository {
+  getOrCreate(languageId: string): Promise<InflectionSystem>;
+  save(system: InflectionSystem): Promise<void>;
 }
 
 export interface RecentProjectStore {

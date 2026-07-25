@@ -1,11 +1,13 @@
 import {
   EvolutionRepository,
+  InflectionRepository,
   LanguageRepository,
   LexemeRepository,
   ProjectRepository,
 } from "@/fishtongue/application/ports/ProjectPorts";
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -89,6 +91,29 @@ export class MemoryEvolutionRepository implements EvolutionRepository {
 
   async save(evolution: Evolution): Promise<void> {
     this.values.set(evolution.languageId, clone(evolution));
+  }
+}
+
+export class MemoryInflectionRepository implements InflectionRepository {
+  private readonly values = new Map<string, InflectionSystem>();
+
+  async getOrCreate(languageId: string): Promise<InflectionSystem> {
+    const current = this.values.get(languageId);
+    if (current) return clone(current);
+    const created: InflectionSystem = {
+      id: uuid(),
+      languageId,
+      rules: "",
+      rulesVersion: 1,
+      updatedAt: new Date().toISOString(),
+      testCases: [],
+    };
+    this.values.set(languageId, created);
+    return clone(created);
+  }
+
+  async save(system: InflectionSystem): Promise<void> {
+    this.values.set(system.languageId, clone(system));
   }
 }
 

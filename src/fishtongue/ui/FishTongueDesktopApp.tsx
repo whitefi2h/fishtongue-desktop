@@ -1,5 +1,9 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import InflectionService from "@/fishtongue/application/services/InflectionService";
+import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
+import { Language } from "@/fishtongue/domain/models";
+import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -64,8 +68,29 @@ import {
   useState,
 } from "react";
 
-type DialogKind = "new-project" | "new-language" | "planned" | "search" | null;
+type DialogKind =
+  | "new-project"
+  | "new-language"
+  | "planned"
+  | "search"
+  | "lexurgy-help"
+  | null;
 type AppMode = "welcome" | "workspace";
+
+function toPrototypeLanguage(language: Language): PrototypeLanguage {
+  return {
+    id: language.id,
+    name: language.name,
+    nativeName: language.name,
+    family: "项目语言",
+    era: "未设置",
+    region: "未设置",
+    status: "真实项目数据",
+    words: 0,
+    warnings: 0,
+    stages: [],
+  };
+}
 
 const icons: Partial<Record<WorkspaceRoute, ElementType>> = {
   "project-home": HomeIcon,
@@ -94,7 +119,7 @@ const menus = [
   { label: "项目", items: [["项目属性", "", "project-settings"], ["新建语言", "", "new-language"], ["导入语言", "", "planned"], ["历史事件", "", "events"], ["项目诊断", "", "planned"]] },
   { label: "语言", items: [["语言属性", "", "language-properties"], ["阶段管理", "", "stages"], ["方言管理", "", "dialects"], ["创建下一阶段", "", "planned"], ["验证语言", "", "planned"]] },
   { label: "工具", items: [["IPA 工具", "", "phonology"], ["音变规则测试器", "", "evolution"], ["批量导入", "", "planned"], ["开发者工具", "", "developer-tools"], ["AI 与模型设置", "", "planned"]] },
-  { label: "帮助", items: [["使用手册", "F1", "planned"], ["快捷键", "", "planned"], ["语言学术语", "", "planned"], ["Lexurgy 规则文档", "", "planned"], ["关于 FishTongue", "", "planned"]] },
+  { label: "帮助", items: [["Lexurgy 规则快速参考", "F1", "lexurgy-help"], ["快捷键", "", "planned"], ["语言学术术语", "", "planned"], ["关于 FishTongue", "", "planned"]] },
 ] as const;
 
 const englishMenus = [
@@ -104,15 +129,19 @@ const englishMenus = [
   { label: "Project", items: [["Project properties", "", "project-settings"], ["New language", "", "new-language"], ["Import language", "", "planned"], ["Historical events", "", "events"], ["Project diagnostics", "", "planned"]] },
   { label: "Language", items: [["Language properties", "", "language-properties"], ["Manage stages", "", "stages"], ["Manage dialects", "", "dialects"], ["Create next stage", "", "planned"], ["Validate language", "", "planned"]] },
   { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "planned"]] },
-  { label: "Help", items: [["User guide", "F1", "planned"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["Lexurgy rule reference", "", "planned"], ["About FishTongue", "", "planned"]] },
+  { label: "Help", items: [["Lexurgy quick reference", "F1", "lexurgy-help"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["About FishTongue", "", "planned"]] },
 ] as const;
 
 export default function FishTongueDesktopApp({
   application,
   windowPort,
+  soundChangeService,
+  inflectionService,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
+  soundChangeService?: SoundChangeService;
+  inflectionService?: InflectionService;
 }) {
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -136,6 +165,12 @@ export default function FishTongueDesktopApp({
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
   const currentRoute = routesById[route];
+  const workspaceLanguages = useMemo(
+    () => snapshot?.languages.length
+      ? snapshot.languages.map(toPrototypeLanguage)
+      : prototypeProject.languages,
+    [snapshot]
+  );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
 
@@ -185,6 +220,10 @@ export default function FishTongueDesktopApp({
         event.preventDefault();
         goBack();
       }
+      if (event.key === "F1") {
+        event.preventDefault();
+        setDialog("lexurgy-help");
+      }
       if (event.key === "Escape" && navOverlayOpen) {
         event.preventDefault();
         setNavOverlayOpen(false);
@@ -207,7 +246,13 @@ export default function FishTongueDesktopApp({
   });
 
   const enterWorkspace = (next?: ProjectSnapshot | null) => {
-    if (next) setSnapshot(next);
+    if (next) {
+      setSnapshot(next);
+      if (next.languages[0]) {
+        setSelectedLanguage(toPrototypeLanguage(next.languages[0]));
+        setSelectedStage(undefined);
+      }
+    }
     setMode("workspace");
     setRouteHistory([]);
     setRoute("project-home");
@@ -272,6 +317,7 @@ export default function FishTongueDesktopApp({
     if (id === "save-as") return void saveProject(true);
     if (id === "new-language") return setDialog("new-language");
     if (id === "search") return setDialog("search");
+    if (id === "lexurgy-help") return setDialog("lexurgy-help");
     if (id === "toggle-nav") return toggleNavigation();
     if (id === "toggle-ai") return setAiOpen((value) => !value);
     if (id === "toggle-theme") return setTheme((value) => value === "light" ? "dark" : "light");
@@ -320,7 +366,7 @@ export default function FishTongueDesktopApp({
           <ContextToolbar
             project={projectName}
             level={workspaceLevel}
-            languages={prototypeProject.languages}
+            languages={workspaceLanguages}
             language={selectedLanguage}
             stage={selectedStage}
             page={pageTitle}
@@ -357,13 +403,14 @@ export default function FishTongueDesktopApp({
               route={route}
               level={workspaceLevel}
               language={selectedLanguage}
+              project={projectName}
               locale={locale}
               onNavigate={navigate}
               onCollapse={toggleNavigation}
             />
             <main id="main-workspace" className={styles.mainWorkspace} tabIndex={-1}>
-              <PreviewBanner locale={locale} />
-              <PageHeader route={route} locale={locale} onCreate={() => setDialog("new-language")} />
+              <PreviewBanner locale={locale} live={Boolean(snapshot)} />
+              <PageHeader route={route} locale={locale} live={Boolean(snapshot)} onCreate={() => setDialog("new-language")} />
               <PageContent
                 route={route}
                 language={selectedLanguage}
@@ -378,6 +425,10 @@ export default function FishTongueDesktopApp({
                   setPlannedTitle(title);
                   setDialog("planned");
                 }}
+                application={application}
+                snapshot={snapshot}
+                soundChangeService={soundChangeService}
+                inflectionService={inflectionService}
               />
             </main>
             {aiOpen && <AiSidebar onClose={() => setAiOpen(false)} />}
@@ -394,7 +445,18 @@ export default function FishTongueDesktopApp({
           setDialog(null);
           enterWorkspace(next);
         }}
-        onCreateLanguage={(name) => {
+        onCreateLanguage={async (name) => {
+          if (snapshot) {
+            const created = await application.createLanguage(name);
+            const current = application.getSnapshot();
+            if (current) setSnapshot({ ...current });
+            setSelectedLanguage(toPrototypeLanguage(created));
+            setSelectedStage(undefined);
+            setDialog(null);
+            navigate("language-overview");
+            setMessage("语言已创建并保存到当前项目。");
+            return;
+          }
           const language: PrototypeLanguage = {
             id: `preview-${Date.now()}`, name, nativeName: name, family: "未分类",
             era: "尚未设置", region: "尚未设置", status: "设计草稿", words: 0, warnings: 0, stages: [],
@@ -640,8 +702,8 @@ function ContextToolbar(props: {
   </div>;
 }
 
-function Navigation({ collapsed, route, level, language, locale, onNavigate, onCollapse }: {
-  collapsed: boolean; route: WorkspaceRoute; level: "project" | "language"; language: PrototypeLanguage; locale: UiLocale;
+function Navigation({ collapsed, route, level, language, locale, project, onNavigate, onCollapse }: {
+  collapsed: boolean; route: WorkspaceRoute; level: "project" | "language"; language: PrototypeLanguage; locale: UiLocale; project: string;
   onNavigate: (route: WorkspaceRoute) => void; onCollapse: () => void;
 }) {
   const renderGroup = (group: "project" | "language") => routeRegistry.filter((item) => {
@@ -658,7 +720,7 @@ function Navigation({ collapsed, route, level, language, locale, onNavigate, onC
     ? (locale === "zh-CN" ? "展开导航" : "Expand navigation")
     : (locale === "zh-CN" ? "折叠导航" : "Collapse navigation");
   return <aside data-workspace-navigation className={styles.navigation} aria-label={locale === "zh-CN" ? "工作区导航" : "Workspace navigation"}>
-    <div className={styles.navHeading}><span>{collapsed ? "P" : prototypeProject.name}</span><button title={collapseLabel} aria-label={collapseLabel} onClick={onCollapse}><RowsIcon aria-hidden="true" /></button></div>
+    <div className={styles.navHeading}><span>{collapsed ? "P" : project}</span><button title={collapseLabel} aria-label={collapseLabel} onClick={onCollapse}><RowsIcon aria-hidden="true" /></button></div>
     <div className={styles.navGroup}><p>{locale === "zh-CN" ? "项目" : "Project"}</p>{renderGroup("project")}</div>
     {level === "language" && <>
       <div className={styles.navSeparator} />
@@ -668,14 +730,17 @@ function Navigation({ collapsed, route, level, language, locale, onNavigate, onC
   </aside>;
 }
 
-function PreviewBanner({ locale }: { locale: UiLocale }) {
-  return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{t(locale, "preview")}</span></div>;
+function PreviewBanner({ locale, live }: { locale: UiLocale; live: boolean }) {
+  return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{live
+    ? (locale === "zh-CN" ? "真实项目模式 · 规则和测试输入会保存，生成结果仅供预览" : "Project mode · Rules and test inputs are saved; generated results are previews")
+    : t(locale, "preview")}</span></div>;
 }
 
-function PageHeader({ route, locale, onCreate }: { route: WorkspaceRoute; locale: UiLocale; onCreate: () => void }) {
+function PageHeader({ route, locale, live, onCreate }: { route: WorkspaceRoute; locale: UiLocale; live: boolean; onCreate: () => void }) {
   const item = routesById[route];
+  const featureState = live && ["evolution", "morphology"].includes(route) ? "live" : item.state;
   return <header className={styles.pageHeader}>
-    <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={item.state} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
+    <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={featureState} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
     <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>
   </header>;
 }
@@ -741,7 +806,14 @@ function PageContent(props: {
   route: WorkspaceRoute; language: PrototypeLanguage; selectedStage?: PrototypeLanguage["stages"][number];
   onLanguage: (language: PrototypeLanguage) => void; onStage: (stage?: PrototypeLanguage["stages"][number]) => void;
   onPlanned: (title: string) => void;
+  application: ProjectApplication;
+  snapshot: ProjectSnapshot | null;
+  soundChangeService?: SoundChangeService;
+  inflectionService?: InflectionService;
 }) {
+  const liveLanguage = Boolean(
+    props.snapshot?.languages.some((language) => language.id === props.language.id)
+  );
   switch (props.route) {
     case "project-home": return <ProjectHome onLanguage={props.onLanguage} />;
     case "languages": return <LanguagesPage onLanguage={props.onLanguage} />;
@@ -753,10 +825,12 @@ function PageContent(props: {
     case "stages": return <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
     case "dialects": return <DialectsPage />;
     case "phonology": return <PhonologyPage />;
-    case "morphology": return <MorphologyPage />;
+    case "morphology": return props.snapshot
+      ? <InflectionWorkspace application={props.application} service={props.inflectionService} languageId={props.language.id} live={liveLanguage} />
+      : <MorphologyPage />;
     case "lexicon": return <LexiconPage />;
     case "writing": return <WritingPage />;
-    case "evolution": return <EvolutionPage />;
+    case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} />;
     case "contact": return <ContactPage />;
     case "translation": return <TranslationPage />;
     case "developer-tools": return <DeveloperToolsPage />;
@@ -978,7 +1052,7 @@ function WelcomePage(props: {
 
 function AppDialog(props: {
   kind: DialogKind; plannedTitle: string; onClose: () => void;
-  onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => void;
+  onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => Promise<void> | void;
 }) {
   const [name, setName] = useState("");
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -1008,7 +1082,7 @@ function AppDialog(props: {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (props.kind === "new-project") void props.onCreateProject(name);
-    if (props.kind === "new-language") props.onCreateLanguage(name);
+    if (props.kind === "new-language") void props.onCreateLanguage(name);
   };
   return <div className={styles.dialogOverlay} role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget) props.onClose();}}>
     <div
@@ -1042,9 +1116,25 @@ function AppDialog(props: {
         }
       }}
     >
-      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.plannedTitle}</h2>
-        <p>{props.kind === "planned" ? "此能力只保留入口，不会在本轮执行。" : "设计预览与真实项目能力保持清楚边界。"}</p></div><button aria-label="关闭" onClick={props.onClose}><Cross2Icon aria-hidden="true" /></button></div>
+      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.kind === "lexurgy-help" ? "Lexurgy 规则快速参考" : props.plannedTitle}</h2>
+        <p>{props.kind === "planned"
+          ? "此能力只保留入口，不会在本轮执行。"
+          : props.kind === "lexurgy-help"
+            ? "离线查看常用语法；完整规则仍以引擎验证结果为准。"
+            : "设计预览与真实项目能力保持清楚边界。"}</p></div><button aria-label="关闭" onClick={props.onClose}><Cross2Icon aria-hidden="true" /></button></div>
       {props.kind === "planned" ? <div className={styles.dialogBody}><div className={styles.plannedIllustration}><LayersIcon aria-hidden="true" /></div><p>页面结构和入口已经完成，正式数据、算法或运行环境将在对应功能阶段接入。</p></div>
+      : props.kind === "lexurgy-help" ? <div className={styles.dialogBody}>
+          <p>这份参考随 FishTongue 安装，可在断网时使用。规则按从上到下的顺序执行。</p>
+          <div className={styles.commandResults}>
+            <div><strong>注释</strong><kbd># 说明文字</kbd></div>
+            <div><strong>基本替换</strong><kbd>规则名: a =&gt; e</kbd></div>
+            <div><strong>环境</strong><kbd>a =&gt; e / p _ t</kbd></div>
+            <div><strong>词首 / 词尾</strong><kbd>#_ / _#</kbd></div>
+            <div><strong>备选项</strong><kbd>{"{p, t, k} => {b, d, g}"}</kbd></div>
+            <div><strong>验证错误</strong><span>验证完成后会自动定位到对应行列。</span></div>
+          </div>
+          <p>运行结果只作预览，不会写回词典，也不会创建语言阶段。</p>
+        </div>
       : props.kind === "search" ? <div className={styles.dialogBody}><label className={styles.commandInput}><MagnifyingGlassIcon aria-hidden="true" /><input data-dialog-initial-focus aria-label="搜索页面、语言、词条或命令" name="global-search" autoComplete="off" placeholder="搜索页面、语言、词条或命令…" /></label><div className={styles.commandResults}>{["打开阿兰语","前往词典","查看语言谱系","切换深色主题"].map((v)=><button key={v}>{v}<kbd>↵</kbd></button>)}</div></div>
       : <form onSubmit={submit}><div className={styles.dialogBody}><label className={styles.dialogField}><span>{props.kind === "new-project" ? "项目名称" : "语言名称"}</span><input data-dialog-initial-focus name={props.kind === "new-project" ? "project-name" : "language-name"} autoComplete="off" value={name} onChange={(event)=>setName(event.target.value)} /></label>
         {props.kind === "new-project" && <><label className={styles.dialogField}><span>项目说明</span><textarea name="project-description" autoComplete="off" placeholder="可选；本轮不写入项目…" /></label><div className={styles.wizardChoice}><button type="button" data-active><strong>快速开始</strong><span>参考现实语言规则</span></button><button type="button"><strong>从零构建</strong><span>创建空白语言</span></button></div></>}</div>

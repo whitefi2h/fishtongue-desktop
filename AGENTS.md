@@ -4,9 +4,11 @@
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
 - 再读 `.context/CONTEXT.md`；它记录当前代码的组合根、依赖方向和跨阶段接口边界。
-- Phase 1 已通过验收；状态见 `docs/phase-1-development-plan.md` 和 `docs/phase-1/acceptance-report.md`。
+- Phase 1 和 Phase 1.5 已通过验收；Phase 2 已完成开发与自动验收，正等待干净
+  Windows 外部人工验收。状态见 `docs/phase-2/acceptance-report.md`。
 - Phase 1.5 的产品、信息架构和 UI/UX 以 `docs/phase-1-5-ui-ux-design-spec.md` 为最高优先级基线；与旧文档冲突时采用该方案。
-- Phase 1.5 先于 Phase 2 实施；不得把设计稿、页面骨架或预留入口写成已经可用的功能。
+- Phase 2 只把真实 Evolution 与“形态学 → 屈折系统”标为可运行；其他设计稿、
+  页面骨架或预留入口不得写成已经可用的功能。
 - 以真实仓库状态为准；不要假设计划中的代码、命令或测试已经完成。
 - 实施前检查真实目录、清单、锁文件、测试和未提交改动。
 - 最终用户只安装 FishTongue；基础功能不得依赖登录、云服务或 LLM。

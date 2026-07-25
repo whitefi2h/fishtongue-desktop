@@ -11,6 +11,7 @@ import {
 } from "@/fishtongue/domain/models";
 import {
   MemoryEvolutionRepository,
+  MemoryInflectionRepository,
   MemoryLanguageRepository,
   MemoryLexemeRepository,
   MemoryProjectRepository,
@@ -76,6 +77,7 @@ function createService() {
     new MemoryLanguageRepository(),
     new MemoryLexemeRepository(),
     new MemoryEvolutionRepository(),
+    new MemoryInflectionRepository(),
     new MemoryRecent()
   );
   return { service, files, database, projects };

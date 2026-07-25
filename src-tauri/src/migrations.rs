@@ -1,15 +1,23 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 1;
+pub const DATABASE_SCHEMA_VERSION: u32 = 2;
 
 pub fn project_migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: DATABASE_SCHEMA_VERSION.into(),
-        description: "create_phase_1_project_schema",
-        sql: include_str!("../migrations/0001_phase_1.sql"),
-        kind: MigrationKind::Up,
-    }]
+    vec![
+        Migration {
+            version: 1,
+            description: "create_phase_1_project_schema",
+            sql: include_str!("../migrations/0001_phase_1.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "create_phase_2_inflection_schema",
+            sql: include_str!("../migrations/0002_phase_2_inflection.sql"),
+            kind: MigrationKind::Up,
+        },
+    ]
 }
 
 #[cfg(test)]
@@ -24,6 +32,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply schema v1");
+        sqlx::raw_sql(include_str!("../migrations/0002_phase_2_inflection.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply schema v2");
         connection
     }
 
@@ -113,5 +125,44 @@ mod tests {
                 .get("count");
             assert_eq!(count, 0, "{table} should be cascade deleted");
         }
+    }
+
+    #[tokio::test]
+    async fn schema_v2_atomically_writes_unicode_inflection_data() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', '项目', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', '阿兰语', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO inflection_write_commands VALUES (
+              'i', 'l', '{"type":"form","value":"固定词形"}', 1,
+              '2026-01-01T00:00:00Z',
+              '[{"id":"t","stem":"词干","categories":{"数":"复数"},"position":0}]'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let stem: String = sqlx::query("SELECT stem FROM inflection_test_cases WHERE id = 't'")
+            .fetch_one(&mut database)
+            .await
+            .unwrap()
+            .get("stem");
+        assert_eq!(stem, "词干");
+
+        let failed = sqlx::query(
+            "INSERT INTO inflection_write_commands VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .bind("i")
+        .bind("l")
+        .bind("{invalid")
+        .bind(1)
+        .bind("2026-01-02T00:00:00Z")
+        .bind("[]")
+        .execute(&mut database)
+        .await;
+        assert!(failed.is_err());
     }
 }
