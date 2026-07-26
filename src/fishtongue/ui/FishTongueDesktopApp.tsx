@@ -166,6 +166,7 @@ export default function FishTongueDesktopApp({
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
   const [lexiconCreateRequest, setLexiconCreateRequest] = useState(0);
+  const closingRef = useRef(false);
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
     () => snapshot
@@ -175,6 +176,19 @@ export default function FishTongueDesktopApp({
   );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
+
+  const requestClose = useCallback(async () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    try {
+      if (application.getSnapshot()) await application.closeProject();
+      setSnapshot(null);
+      await windowPort.close();
+    } catch (reason) {
+      closingRef.current = false;
+      setMessage(`无法安全退出：${errorMessage(reason)}`);
+    }
+  }, [application, windowPort]);
 
   useEffect(() => {
     void Promise.all([application.listRecentProjects(), application.inspectRecovery()])
@@ -192,6 +206,14 @@ export default function FishTongueDesktopApp({
     });
     return () => cleanup();
   }, [windowPort]);
+
+  useEffect(() => {
+    let cleanup: () => void = () => undefined;
+    void windowPort.subscribeCloseRequested(requestClose).then((value) => {
+      cleanup = value;
+    });
+    return () => cleanup();
+  }, [requestClose, windowPort]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -347,7 +369,7 @@ export default function FishTongueDesktopApp({
       setMode("welcome");
       return;
     }
-    if (id === "quit") return void windowPort.close();
+    if (id === "quit") return void requestClose();
     setPlannedTitle("此操作将在后续阶段开放");
     setDialog("planned");
   };
@@ -368,6 +390,7 @@ export default function FishTongueDesktopApp({
         dirty={Boolean(snapshot?.dirty)}
         state={windowState}
         windowPort={windowPort}
+        onClose={() => void requestClose()}
       />
       <MenuBar locale={locale} onCommand={(id) => void command(id)} />
       {mode === "welcome" ? (
@@ -513,8 +536,8 @@ export default function FishTongueDesktopApp({
   );
 }
 
-function TitleBar({ projectName, pageTitle, dirty, state, windowPort }: {
-  projectName: string; pageTitle: string; dirty: boolean; state: WindowState; windowPort: DesktopWindowPort;
+function TitleBar({ projectName, pageTitle, dirty, state, windowPort, onClose }: {
+  projectName: string; pageTitle: string; dirty: boolean; state: WindowState; windowPort: DesktopWindowPort; onClose: () => void;
 }) {
   return <header className={styles.titleBar}>
     <div className={styles.brand} translate="no"><span className={styles.brandMark}>F</span><strong>FishTongue</strong></div>
@@ -540,7 +563,7 @@ function TitleBar({ projectName, pageTitle, dirty, state, windowPort }: {
       <button title={state.isMaximized ? "还原" : "最大化"} aria-label={state.isMaximized ? "还原" : "最大化"} onClick={() => void windowPort.toggleMaximize()}>
         {state.isMaximized ? <ExitFullScreenIcon aria-hidden="true" /> : <EnterFullScreenIcon aria-hidden="true" />}
       </button>
-      <button className={styles.closeButton} title="关闭" aria-label="关闭" onClick={() => void windowPort.close()}><Cross2Icon aria-hidden="true" /></button>
+      <button className={styles.closeButton} title="关闭" aria-label="关闭" onClick={onClose}><Cross2Icon aria-hidden="true" /></button>
     </div>
   </header>;
 }

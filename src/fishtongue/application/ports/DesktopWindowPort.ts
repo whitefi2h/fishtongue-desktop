@@ -10,4 +10,5 @@ export interface DesktopWindowPort {
   close(): Promise<void>;
   isMaximized(): Promise<boolean>;
   subscribeWindowState(listener: (state: WindowState) => void): Promise<() => void>;
+  subscribeCloseRequested(listener: () => void | Promise<void>): Promise<() => void>;
 }

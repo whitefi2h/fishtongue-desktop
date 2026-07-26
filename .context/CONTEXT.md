@@ -89,6 +89,8 @@ SQLite、文件系统、网络、系统进程或秘密；任何修改先产生�
   启动 Sidecar、访问 Repository 或显示伪造运行结果。
 - 正式词典页面必须经 `ProjectApplication` 读写当前 Language 的 Lexeme 与独立
   Sense；原型词典不得作为真实项目或 Evolution“当前词典”输入源。
+- 所有正常关窗入口必须先经 `ProjectApplication.closeProject()` 完成保存、数据库
+  关闭和活动工作区清理，再允许 Tauri 真正关闭窗口；进程被强制终止时才保留恢复工作区。
 - 音变和屈折预览不得修改 Lexeme、Sense 或 LanguageStage。
 - Phase 1 capability 只开放 Dialog、SQL 和 Store；没有 Shell、HTTP 或通用文件系统权限。
 

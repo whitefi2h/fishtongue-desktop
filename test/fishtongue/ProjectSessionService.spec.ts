@@ -35,6 +35,7 @@ const session: ProjectSession = {
 class FakeFiles implements ProjectFilePort {
   dirtyMarks = 0;
   saves = 0;
+  discards = 0;
   recovery: RecoveryCandidate | null = null;
   createProject = async () => clone(session);
   openProject = async () => clone(session);
@@ -47,7 +48,7 @@ class FakeFiles implements ProjectFilePort {
   markDirty = async () => { this.dirtyMarks += 1; };
   inspectRecovery = async () => this.recovery;
   recoverProject = async () => ({ ...clone(session), requiresSaveAs: true, recovered: true });
-  discardWorkspace = async () => {};
+  discardWorkspace = async () => { this.discards += 1; };
 }
 
 class FakeDatabase implements DatabaseSessionPort {
@@ -127,5 +128,16 @@ describe("ProjectSessionService", () => {
     const { service, files } = createService();
     files.recovery = { manifest: session.manifest, sourcePath: session.sourcePath };
     await expect(service.openProject()).rejects.toThrow("请先选择");
+  });
+
+  it("removes the active workspace after a normal project close", async () => {
+    const { service, files, database } = createService();
+    await service.createProject("测试项目");
+
+    await service.closeProject();
+
+    expect(service.getSnapshot()).toBeNull();
+    expect(database.opened).toBe(false);
+    expect(files.discards).toBe(1);
   });
 });

@@ -6,6 +6,8 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export default class TauriDesktopWindowAdapter implements DesktopWindowPort {
+  private allowClose = false;
+
   async startDragging(): Promise<void> {
     if (isTauri()) await getCurrentWindow().startDragging();
   }
@@ -19,7 +21,15 @@ export default class TauriDesktopWindowAdapter implements DesktopWindowPort {
   }
 
   async close(): Promise<void> {
-    if (isTauri()) await getCurrentWindow().close();
+    if (isTauri()) {
+      this.allowClose = true;
+      try {
+        await getCurrentWindow().close();
+      } catch (error) {
+        this.allowClose = false;
+        throw error;
+      }
+    }
   }
 
   async isMaximized(): Promise<boolean> {
@@ -47,5 +57,16 @@ export default class TauriDesktopWindowAdapter implements DesktopWindowPort {
       unlistenResize();
       unlistenFocus();
     };
+  }
+
+  async subscribeCloseRequested(
+    listener: () => void | Promise<void>
+  ): Promise<() => void> {
+    if (!isTauri()) return () => undefined;
+    return getCurrentWindow().onCloseRequested(async (event) => {
+      if (this.allowClose) return;
+      event.preventDefault();
+      await listener();
+    });
   }
 }

@@ -6,12 +6,18 @@ import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 class TestWindowPort implements DesktopWindowPort {
   calls: string[] = [];
   state: WindowState = { isMaximized: false, isFocused: true };
+  closeRequested?: () => void | Promise<void>;
   async startDragging() { this.calls.push("drag"); }
   async minimize() { this.calls.push("minimize"); }
   async toggleMaximize() { this.calls.push("maximize"); this.state.isMaximized = !this.state.isMaximized; }
   async close() { this.calls.push("close"); }
   async isMaximized() { return this.state.isMaximized; }
   async subscribeWindowState(listener: (state: WindowState) => void) { listener(this.state); return () => undefined; }
+  async subscribeCloseRequested(listener: () => void | Promise<void>) {
+    this.closeRequested = listener;
+    return () => { this.closeRequested = undefined; };
+  }
+  async requestSystemClose() { await this.closeRequested?.(); }
 }
 
 class TestApplication implements ProjectApplication {
@@ -19,6 +25,7 @@ class TestApplication implements ProjectApplication {
   snapshot: ProjectSnapshot | null = null;
   recovery: RecoveryCandidate | null = null;
   lexemes: Lexeme[] = [];
+  closes = 0;
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -36,7 +43,7 @@ class TestApplication implements ProjectApplication {
   async importProject() { return this.snapshot; }
   async saveProject() { this.writes += 1; return this.snapshot!; }
   async saveProjectAs() { this.writes += 1; return this.snapshot; }
-  async closeProject() { this.snapshot = null; }
+  async closeProject() { this.closes += 1; this.snapshot = null; }
   async recoverProject() { return this.snapshot!; }
   async discardRecovery() { this.recovery = null; }
   async inspectRecovery() { return this.recovery; }
@@ -123,9 +130,10 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("[aria-label='工作区导航']").contains("button", "词典").click();
 
     cy.contains("当前语言还没有词条").should("be.visible");
-    cy.get("input[name='lexeme-romanized']").type("ama");
-    cy.get("input[name='lexeme-part-of-speech']").clear().type("名词");
-    cy.get("textarea[name='lexeme-senses']").type("母亲{enter}女性长辈");
+    cy.get("input[name='lexeme-romanized']").should("be.enabled").type("ama");
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
+    cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
     cy.contains("button", "保存词条").click();
 
     cy.contains("td", "ama").should("be.visible");
@@ -137,6 +145,34 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
         "母亲",
         "女性长辈",
       ]);
+    });
+  });
+
+  it("closes the active project before the custom title-bar closes the window", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(() => app.createProject("正常关闭测试"));
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("closes the active project before an operating-system close request", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(() => app.createProject("系统关闭测试"));
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.then(() => windowPort.requestSystemClose());
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
     });
   });
 
