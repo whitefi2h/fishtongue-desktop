@@ -87,6 +87,8 @@ SQLite、文件系统、网络、系统进程或秘密；任何修改先产生�
   持久化，生成结果不持久化；v1 项目只在活动工作区迁移，保存前仍走备份保护。
 - 真实项目的 Evolution 和“形态学 → 屈折系统”可以启动引擎；设计原型模式不得
   启动 Sidecar、访问 Repository 或显示伪造运行结果。
+- 正式词典页面必须经 `ProjectApplication` 读写当前 Language 的 Lexeme 与独立
+  Sense；原型词典不得作为真实项目或 Evolution“当前词典”输入源。
 - 音变和屈折预览不得修改 Lexeme、Sense 或 LanguageStage。
 - Phase 1 capability 只开放 Dialog、SQL 和 Store；没有 Shell、HTTP 或通用文件系统权限。
 

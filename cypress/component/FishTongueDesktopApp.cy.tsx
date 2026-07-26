@@ -18,6 +18,7 @@ class TestApplication implements ProjectApplication {
   writes = 0;
   snapshot: ProjectSnapshot | null = null;
   recovery: RecoveryCandidate | null = null;
+  lexemes: Lexeme[] = [];
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -60,9 +61,20 @@ class TestApplication implements ProjectApplication {
   }
   async renameLanguage() { throw new Error("prototype must not persist"); }
   async deleteLanguage() { throw new Error("prototype must not persist"); }
-  async listLexemes(): Promise<Lexeme[]> { return []; }
-  async saveLexeme() { throw new Error("prototype must not persist"); }
-  async deleteLexeme() { throw new Error("prototype must not persist"); }
+  async listLexemes(languageId: string): Promise<Lexeme[]> {
+    return this.lexemes.filter((lexeme) => lexeme.languageId === languageId);
+  }
+  async saveLexeme(lexeme: Lexeme) {
+    this.writes += 1;
+    this.lexemes = [
+      ...this.lexemes.filter((value) => value.id !== lexeme.id),
+      lexeme,
+    ];
+  }
+  async deleteLexeme(id: string) {
+    this.writes += 1;
+    this.lexemes = this.lexemes.filter((lexeme) => lexeme.id !== id);
+  }
   async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
   async saveEvolution() { throw new Error("prototype must not persist"); }
   async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
@@ -94,6 +106,37 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.contains("真实项目模式").should("be.visible");
     cy.wrap(null).then(() => {
       expect(app.snapshot?.languages.map((language) => language.name)).to.deep.equal(["测试祖语"]);
+    });
+  });
+
+  it("creates a persistent lexeme for the current real language", () => {
+    const app = new TestApplication();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("真实词典项目");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("测试语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.contains("h1", "概览").should("be.visible");
+    cy.get("[aria-label='工作区导航']").contains("button", "词典").click();
+
+    cy.contains("当前语言还没有词条").should("be.visible");
+    cy.get("input[name='lexeme-romanized']").type("ama");
+    cy.get("input[name='lexeme-part-of-speech']").clear().type("名词");
+    cy.get("textarea[name='lexeme-senses']").type("母亲{enter}女性长辈");
+    cy.contains("button", "保存词条").click();
+
+    cy.contains("td", "ama").should("be.visible");
+    cy.contains("td", "母亲").should("be.visible");
+    cy.wrap(null).then(() => {
+      expect(app.lexemes).to.have.length(1);
+      expect(app.lexemes[0].languageId).to.equal("language-1");
+      expect(app.lexemes[0].senses.map((sense) => sense.definition)).to.deep.equal([
+        "母亲",
+        "女性长辈",
+      ]);
     });
   });
 

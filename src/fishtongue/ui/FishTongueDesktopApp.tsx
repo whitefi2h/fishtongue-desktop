@@ -4,6 +4,7 @@ import InflectionService from "@/fishtongue/application/services/InflectionServi
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import { Language } from "@/fishtongue/domain/models";
 import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
+import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -164,6 +165,7 @@ export default function FishTongueDesktopApp({
   const [message, setMessage] = useState("本地设计原型 · 不会写入项目");
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
+  const [lexiconCreateRequest, setLexiconCreateRequest] = useState(0);
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
     () => snapshot
@@ -432,7 +434,18 @@ export default function FishTongueDesktopApp({
             />
             <main id="main-workspace" className={styles.mainWorkspace} tabIndex={-1}>
               <PreviewBanner locale={locale} live={Boolean(snapshot)} />
-              <PageHeader route={route} locale={locale} live={Boolean(snapshot)} onCreate={() => setDialog("new-language")} />
+              <PageHeader
+                route={route}
+                locale={locale}
+                live={Boolean(snapshot)}
+                onCreate={() => {
+                  if (route === "lexicon" && snapshot) {
+                    setLexiconCreateRequest((value) => value + 1);
+                    return;
+                  }
+                  setDialog("new-language");
+                }}
+              />
               <PageContent
                 route={route}
                 language={selectedLanguage}
@@ -451,6 +464,9 @@ export default function FishTongueDesktopApp({
                 snapshot={snapshot}
                 soundChangeService={soundChangeService}
                 inflectionService={inflectionService}
+                lexiconCreateRequest={lexiconCreateRequest}
+                onProjectChanged={(next) => setSnapshot({ ...next })}
+                onStatus={setMessage}
                 onCreateLanguage={() => setDialog("new-language")}
               />
             </main>
@@ -758,13 +774,13 @@ function Navigation({ collapsed, route, level, language, locale, project, onNavi
 
 function PreviewBanner({ locale, live }: { locale: UiLocale; live: boolean }) {
   return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{live
-    ? (locale === "zh-CN" ? "真实项目模式 · 当前仅项目、语言、演化和屈折数据会写入；生成结果仅供预览" : "Project mode · Only project, language, evolution, and inflection data are currently saved; generated results are previews")
+    ? (locale === "zh-CN" ? "真实项目模式 · 当前项目、语言、词典、演化和屈折数据会写入；生成结果仅供预览" : "Project mode · Project, language, lexicon, evolution, and inflection data are saved; generated results remain previews")
     : t(locale, "preview")}</span></div>;
 }
 
 function PageHeader({ route, locale, live, onCreate }: { route: WorkspaceRoute; locale: UiLocale; live: boolean; onCreate: () => void }) {
   const item = routesById[route];
-  const featureState = live && ["project-home", "languages", "evolution", "morphology"].includes(route) ? "live" : item.state;
+  const featureState = live && ["project-home", "languages", "lexicon", "evolution", "morphology"].includes(route) ? "live" : item.state;
   return <header className={styles.pageHeader}>
     <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={featureState} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
     <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>
@@ -836,6 +852,9 @@ function PageContent(props: {
   snapshot: ProjectSnapshot | null;
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
+  lexiconCreateRequest: number;
+  onProjectChanged: (snapshot: ProjectSnapshot) => void;
+  onStatus: (message: string) => void;
   onCreateLanguage: () => void;
 }) {
   const liveLanguage = Boolean(
@@ -858,7 +877,15 @@ function PageContent(props: {
     case "morphology": return props.snapshot
       ? <InflectionWorkspace application={props.application} service={props.inflectionService} languageId={props.language.id} live={liveLanguage} />
       : <MorphologyPage />;
-    case "lexicon": return <LexiconPage />;
+    case "lexicon": return props.snapshot
+      ? <LexiconWorkspace
+          application={props.application}
+          languageId={props.language.id}
+          createRequest={props.lexiconCreateRequest}
+          onProjectChanged={props.onProjectChanged}
+          onStatus={props.onStatus}
+        />
+      : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;
     case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} />;
     case "contact": return <ContactPage />;
@@ -1017,7 +1044,7 @@ function MorphologyPage() {
       <tbody>{[["-an","后缀","施事者","动词 → 名词"],["ka-","前缀","反复、再次","动词"],["-ir","屈折词尾","属格","名词"],["tal","词根","说、言语","动词"]].map((row)=><tr key={row[0]}>{row.map((v)=><td key={v}>{v}</td>)}<td><span className={styles.statusTag}>已确认</span></td></tr>)}</tbody></table></section></div>;
 }
 
-function LexiconPage() {
+function PrototypeLexiconPage() {
   const [selected, setSelected] = useState(prototypeProject.lexemes[0]);
   return <div className={styles.lexiconLayout}>
     <aside className={styles.filterPane}><h2>筛选与分类</h2><label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索词形或释义" name="lexicon-search" autoComplete="off" placeholder="搜索词形或释义…" /></label>
