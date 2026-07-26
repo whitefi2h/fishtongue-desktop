@@ -1,23 +1,67 @@
 # FishTongue Phase 3 验收报告
 
-状态：**开发中，尚未结项。**
+## 当前结论
+
+Phase 3 实施完成，自动验收通过后进入外部 Windows 人工验收。本报告不把尚未进行的外部人工步骤写成通过。
+
+## 已交付能力
+
+- SQLite Schema v3 与 v2 → v3 安全迁移。
+- 词条的 IPA、词性、状态、来源、备注和多个独立词义。
+- 语素库、词条—语素关系及顺序调整。
+- 版本化造词配置、内置 Swadesh 100/207 和持久化自定义概念表。
+- Lexurgy Sidecar 协议 v2 与 SplitMix64 v1 确定性造词。
+- 固定种子、1～10 个候选、最多 500 个概念和 5,000 个候选。
+- 持久化审核批次、候选编辑、接受、拒绝和冲突检查。
+- 批量派生、原子提交、最近 50 条批量操作和冲突安全撤销。
+- Phase 2 音变、屈折、Sidecar 清理和项目保存回归保护。
 
 ## 自动验收
 
-`npm run verify:phase3` 尚未建立。
+总命令：
 
-## 外部人工验收
+```powershell
+npm run verify:phase3
+```
 
-尚未开始。最终必须在无系统 Java 的干净 Windows x64 电脑执行
-[`manual-acceptance-guide.md`](manual-acceptance-guide.md)。
+覆盖范围：
 
-## 交付物
+- Jest 领域与服务测试；
+- Cypress 桌面、词典、语素、造词、审核和 Phase 2 回归；
+- SQLite Schema v3、迁移、事务、级联与安全撤销；
+- Rust Supervisor、协议 v2、项目容器和进程清理；
+- Lexurgy 上游测试、造词测试向量和真实引擎契约；
+- Next.js 静态导出与架构审计；
+- Windows x64 NSIS 安装包及资源哈希审计。
 
-- 桌面版本：`0.3.0-phase.3`
-- 数据库目标版本：Schema v3
-- Sidecar 目标协议：v2
-- 安装包、大小、SHA-256 与签名状态：待生成
+2026-07-26 最终执行结果：**通过**。
 
-## 未验证项
+- Jest：18 个测试套件、70 项测试通过。
+- Cypress：16 份规格、87 项桌面交互测试通过。
+- Rust：18 项测试通过，`cargo check` 通过。
+- Lexurgy：上游、桌面 API 和确定性造词测试通过。
+- 真实引擎契约：`1.7.6-fishtongue.2 / protocol 2` 通过。
+- Next.js 静态导出、Phase 3 架构与资源审计通过。
+- NSIS 安装包构建和包内容审计通过。
 
-当前所有 Phase 3 能力均处于开发或待验证状态，不得标记为已交付。
+安装包：
+
+- 名称：`FishTongue_0.3.0-phase.3_x64-setup.exe`
+- 大小：51,045,355 字节（约 48.7 MiB）
+- SHA-256：`C32A43CFF0856779F92B48463DACB237FEA3275781568CFAE3158419FD37826E`
+- 签名状态：未签名的开发验收包
+
+## 仍需人工验收
+
+按 `manual-acceptance-guide.md` 在没有系统 Java 的干净 Windows 电脑上执行：
+
+- v2 项目迁移及重新打开；
+- 真实词典、语素、固定种子复现、审核、提交和撤销；
+- 强制终止生成任务后的数据安全；
+- 音变与屈折回归；
+- 退出后无 Java/Lexurgy 残留；
+- 断网、卸载和重装。
+
+## 结项门
+
+只有外部人工验收通过、无 P0/P1 缺陷后，才合并 `main` 并创建 `phase-3.0.1` 标签。

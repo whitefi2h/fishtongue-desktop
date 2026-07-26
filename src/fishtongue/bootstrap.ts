@@ -13,6 +13,13 @@ import {
   SqliteProjectRepository,
 } from "@/fishtongue/infrastructure/SqliteRepositories";
 import TauriDesktopWindowAdapter from "@/fishtongue/infrastructure/TauriDesktopWindowAdapter";
+import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
+import {
+  SqliteConceptListRepository,
+  SqliteGenerationBatchRepository,
+  SqliteMorphemeRepository,
+  SqliteWordGenerationProfileRepository,
+} from "@/fishtongue/infrastructure/Phase3Repositories";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -21,6 +28,10 @@ export function createDesktopSoundChangeService(): SoundChangeService {
 
 export function createDesktopInflectionService(): InflectionService {
   return new InflectionService(new TauriLexurgyEngineAdapter());
+}
+
+export function createDesktopWordGenerationService(): WordGenerationService {
+  return new WordGenerationService(new TauriLexurgyEngineAdapter());
 }
 
 export function createDesktopProjectApplication(): ProjectSessionService {
@@ -33,6 +44,10 @@ export function createDesktopProjectApplication(): ProjectSessionService {
     new SqliteLexemeRepository(database),
     new SqliteEvolutionRepository(database),
     new SqliteInflectionRepository(database),
+    new SqliteMorphemeRepository(database),
+    new SqliteWordGenerationProfileRepository(database),
+    new SqliteConceptListRepository(database),
+    new SqliteGenerationBatchRepository(database),
     new TauriRecentProjectStore()
   );
 }

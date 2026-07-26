@@ -1,9 +1,15 @@
 import {
   Evolution,
+  ConceptList,
+  GenerationBatch,
+  GenerationCandidate,
   InflectionSystem,
   Language,
+  LexiconBatchOperation,
   Lexeme,
+  Morpheme,
   Project,
+  WordGenerationProfile,
   ProjectSession,
   RecentProject,
   RecoveryCandidate,
@@ -45,6 +51,34 @@ export interface LexemeRepository {
   list(languageId: string): Promise<Lexeme[]>;
   save(lexeme: Lexeme): Promise<void>;
   delete(id: string): Promise<void>;
+}
+
+export interface MorphemeRepository {
+  list(languageId: string): Promise<Morpheme[]>;
+  save(morpheme: Morpheme): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface WordGenerationProfileRepository {
+  list(languageId: string): Promise<WordGenerationProfile[]>;
+  save(profile: WordGenerationProfile): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface ConceptListRepository {
+  list(projectId: string): Promise<ConceptList[]>;
+  save(list: ConceptList): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface GenerationBatchRepository {
+  list(languageId: string): Promise<GenerationBatch[]>;
+  get(id: string): Promise<GenerationBatch | null>;
+  create(batch: GenerationBatch): Promise<void>;
+  saveCandidate(batchId: string, candidate: GenerationCandidate): Promise<void>;
+  commit(batchId: string, operationId: string, committedAt: string): Promise<void>;
+  listOperations(languageId: string): Promise<LexiconBatchOperation[]>;
+  undo(operationId: string, undoneAt: string): Promise<void>;
 }
 
 export interface EvolutionRepository {

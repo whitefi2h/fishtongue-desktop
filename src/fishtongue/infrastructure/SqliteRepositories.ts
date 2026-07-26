@@ -26,7 +26,11 @@ type LexemeRow = {
   id: string;
   language_id: string;
   romanized: string;
+  ipa: string;
   part_of_speech: string;
+  status: Lexeme["status"];
+  source_type: Lexeme["sourceType"];
+  notes: string;
   created_at: string;
   updated_at: string;
   sense_id: string;
@@ -41,6 +45,12 @@ type EvolutionRow = {
   word_id: string | null;
   word: string | null;
   position: number | null;
+};
+type LexemeMorphemeRow = {
+  lexeme_id: string;
+  morpheme_id: string;
+  position: number;
+  role: string;
 };
 type InflectionRow = {
   id: string;
@@ -131,8 +141,8 @@ export class SqliteLexemeRepository implements LexemeRepository {
 
   async list(languageId: string): Promise<Lexeme[]> {
     const rows = await this.database.select<LexemeRow>(
-      `SELECT l.id, l.language_id, l.romanized, l.part_of_speech,
-              l.created_at, l.updated_at, s.id AS sense_id,
+      `SELECT l.id, l.language_id, l.romanized, l.ipa, l.part_of_speech,
+              l.status, l.source_type, l.notes, l.created_at, l.updated_at, s.id AS sense_id,
               s.definition, s.position
        FROM lexemes l
        JOIN senses s ON s.lexeme_id = l.id
@@ -148,10 +158,15 @@ export class SqliteLexemeRepository implements LexemeRepository {
           id: row.id,
           languageId: row.language_id,
           romanized: row.romanized,
+          ipa: row.ipa,
           partOfSpeech: row.part_of_speech,
+          status: row.status,
+          sourceType: row.source_type,
+          notes: row.notes,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           senses: [],
+          morphemes: [],
         } satisfies Lexeme);
       lexeme.senses.push({
         id: row.sense_id,
@@ -160,14 +175,30 @@ export class SqliteLexemeRepository implements LexemeRepository {
       });
       lexemes.set(row.id, lexeme);
     }
+    const morphemeRows = await this.database.select<LexemeMorphemeRow>(
+      `SELECT lm.lexeme_id, lm.morpheme_id, lm.position, lm.role
+       FROM lexeme_morphemes lm
+       JOIN lexemes l ON l.id = lm.lexeme_id
+       WHERE l.language_id = $1
+       ORDER BY lm.lexeme_id, lm.position`,
+      [languageId]
+    );
+    for (const row of morphemeRows) {
+      lexemes.get(row.lexeme_id)?.morphemes.push({
+        morphemeId: row.morpheme_id,
+        position: row.position,
+        role: row.role,
+      });
+    }
     return [...lexemes.values()];
   }
 
   async save(lexeme: Lexeme): Promise<void> {
     await this.database.execute(
       `INSERT INTO lexeme_write_commands
-       (id, language_id, romanized, part_of_speech, created_at, updated_at, senses_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       (id, language_id, romanized, part_of_speech, created_at, updated_at,
+        senses_json, ipa, status, source_type, notes, morphemes_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         lexeme.id,
         lexeme.languageId,
@@ -176,6 +207,11 @@ export class SqliteLexemeRepository implements LexemeRepository {
         lexeme.createdAt,
         lexeme.updatedAt,
         JSON.stringify(lexeme.senses),
+        lexeme.ipa,
+        lexeme.status,
+        lexeme.sourceType,
+        lexeme.notes,
+        JSON.stringify(lexeme.morphemes),
       ]
     );
   }

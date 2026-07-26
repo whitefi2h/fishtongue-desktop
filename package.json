@@ -25,11 +25,14 @@
     "audit:phase1-ui": "node scripts/audit-phase15-ui.mjs",
     "audit:phase2": "node scripts/audit-phase2.mjs",
     "audit:phase2-package": "node scripts/audit-phase2-package.mjs",
+    "audit:phase3": "node scripts/audit-phase3.mjs",
+    "audit:phase3-package": "node scripts/audit-phase3-package.mjs",
     "test:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-phase2-engine.ps1",
     "test:engine-contract": "node scripts/test-engine-contract.mjs",
     "verify:phase1": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase1 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run tauri:build",
     "verify:phase1-ui": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase1-ui && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run tauri:build",
-    "verify:phase2": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase2 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase2-package"
+    "verify:phase2": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase2 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase2-package",
+    "verify:phase3": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase3 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase3-package"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.15.0",

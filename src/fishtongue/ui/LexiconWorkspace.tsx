@@ -1,5 +1,5 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
-import { Lexeme } from "@/fishtongue/domain/models";
+import { Lexeme, Morpheme } from "@/fishtongue/domain/models";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import {
   DotsHorizontalIcon,
@@ -13,14 +13,24 @@ interface LexemeDraft {
   id?: string;
   createdAt?: string;
   romanized: string;
+  ipa: string;
   partOfSpeech: string;
+  status: Lexeme["status"];
+  sourceType: Lexeme["sourceType"];
+  notes: string;
   senses: string;
+  morphemes: string[];
 }
 
 const emptyDraft: LexemeDraft = {
   romanized: "",
+  ipa: "",
   partOfSpeech: "未分类",
+  status: "draft",
+  sourceType: "manual",
+  notes: "",
   senses: "",
+  morphemes: [],
 };
 
 export default function LexiconWorkspace({
@@ -37,6 +47,7 @@ export default function LexiconWorkspace({
   onStatus: (message: string) => void;
 }) {
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
+  const [morphemeLibrary, setMorphemeLibrary] = useState<Morpheme[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [draft, setDraft] = useState<LexemeDraft>(emptyDraft);
   const [search, setSearch] = useState("");
@@ -50,11 +61,18 @@ export default function LexiconWorkspace({
       id: lexeme.id,
       createdAt: lexeme.createdAt,
       romanized: lexeme.romanized,
+      ipa: lexeme.ipa,
       partOfSpeech: lexeme.partOfSpeech,
+      status: lexeme.status,
+      sourceType: lexeme.sourceType,
+      notes: lexeme.notes,
       senses: [...lexeme.senses]
         .sort((left, right) => left.position - right.position)
         .map((sense) => sense.definition)
         .join("\n"),
+      morphemes: [...lexeme.morphemes]
+        .sort((left, right) => left.position - right.position)
+        .map((item) => item.morphemeId),
     });
     setError(undefined);
   }, []);
@@ -68,8 +86,12 @@ export default function LexiconWorkspace({
   const reload = useCallback(async (preferredId?: string) => {
     setLoading(true);
     try {
-      const next = await application.listLexemes(languageId);
+      const [next, nextMorphemes] = await Promise.all([
+        application.listLexemes(languageId),
+        application.listMorphemes(languageId),
+      ]);
       setLexemes(next);
+      setMorphemeLibrary(nextMorphemes);
       const preferred = next.find((lexeme) => lexeme.id === preferredId);
       if (preferred) {
         selectLexeme(preferred);
@@ -126,7 +148,11 @@ export default function LexiconWorkspace({
         id,
         languageId,
         romanized: draft.romanized,
+        ipa: draft.ipa,
         partOfSpeech: draft.partOfSpeech,
+        status: draft.status,
+        sourceType: draft.sourceType,
+        notes: draft.notes,
         createdAt: draft.createdAt ?? now,
         updatedAt: now,
         senses: definitions.map((definition, position) => ({
@@ -134,11 +160,33 @@ export default function LexiconWorkspace({
           definition,
           position,
         })),
+        morphemes: draft.morphemes.map((morphemeId, position) => ({
+          morphemeId,
+          position,
+          role: "composition",
+        })),
       });
       const snapshot = application.getSnapshot();
       if (snapshot) onProjectChanged(snapshot);
       await reload(id);
       onStatus(existing ? "词条修改已保存到项目。" : "新词条已保存到项目。");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!draft.id) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await application.deleteLexeme(draft.id);
+      const snapshot = application.getSnapshot();
+      if (snapshot) onProjectChanged(snapshot);
+      await reload();
+      onStatus("词条已从项目中删除。");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -181,13 +229,14 @@ export default function LexiconWorkspace({
         ? <p className={styles.lexiconMessage}>正在读取词典…</p>
         : filteredLexemes.length
           ? <table className={styles.dataTable}>
-              <thead><tr><th>词形</th><th>核心释义</th><th>词性</th><th>词义数</th></tr></thead>
+              <thead><tr><th>词形</th><th>IPA</th><th>核心释义</th><th>词性</th><th>状态</th></tr></thead>
               <tbody>{filteredLexemes.map((lexeme) =>
                 <tr key={lexeme.id} data-active={lexeme.id === selectedId}>
                   <td><button className={styles.textButton} aria-label={`选择词条 ${lexeme.romanized}`} onClick={() => selectLexeme(lexeme)}><strong>{lexeme.romanized}</strong></button></td>
+                  <td>{lexeme.ipa || "—"}</td>
                   <td>{lexeme.senses[0]?.definition}</td>
                   <td>{lexeme.partOfSpeech}</td>
-                  <td>{lexeme.senses.length}</td>
+                  <td>{lexeme.status === "confirmed" ? "已确认" : lexeme.status === "deprecated" ? "已弃用" : "草稿"}</td>
                 </tr>
               )}</tbody>
             </table>
@@ -205,11 +254,45 @@ export default function LexiconWorkspace({
       </div>
       <form className={styles.lexemeForm} onSubmit={(event) => void save(event)}>
         <label><span>词形</span><input name="lexeme-romanized" autoComplete="off" value={draft.romanized} onChange={(event) => setDraft((value) => ({ ...value, romanized: event.target.value }))} /></label>
+        <label><span>IPA</span><input name="lexeme-ipa" autoComplete="off" value={draft.ipa} onChange={(event) => setDraft((value) => ({ ...value, ipa: event.target.value }))} placeholder="/a.ka/" /></label>
         <label><span>词性</span><input name="lexeme-part-of-speech" autoComplete="off" value={draft.partOfSpeech} onChange={(event) => setDraft((value) => ({ ...value, partOfSpeech: event.target.value }))} /></label>
+        <label><span>状态</span><select name="lexeme-status" value={draft.status} onChange={(event) => setDraft((value) => ({ ...value, status: event.target.value as Lexeme["status"] }))}><option value="draft">草稿</option><option value="confirmed">已确认</option><option value="deprecated">已弃用</option></select></label>
+        <label><span>来源</span><select name="lexeme-source" value={draft.sourceType} onChange={(event) => setDraft((value) => ({ ...value, sourceType: event.target.value as Lexeme["sourceType"] }))}><option value="manual">人工</option><option value="generated">生成</option><option value="derived">派生</option><option value="imported">导入</option></select></label>
         <label><span>词义</span><textarea name="lexeme-senses" value={draft.senses} onChange={(event) => setDraft((value) => ({ ...value, senses: event.target.value }))} placeholder={"每行一个独立词义\n例如：海\n外海"} /></label>
+        <label><span>备注</span><textarea name="lexeme-notes" value={draft.notes} onChange={(event) => setDraft((value) => ({ ...value, notes: event.target.value }))} placeholder="用法、资料状态或其他说明" /></label>
+        <fieldset>
+          <legend>形态组成（按选择顺序保存）</legend>
+          {draft.morphemes.length > 1 && <div className={styles.morphemeOrder}>
+            {draft.morphemes.map((id, position) => {
+              const item = morphemeLibrary.find((morpheme) => morpheme.id === id);
+              return <span key={id}>
+                {position + 1}. {item?.form ?? id}
+                <button type="button" disabled={position === 0} onClick={() => setDraft((value) => ({ ...value, morphemes: move(value.morphemes, position, position - 1) }))}>上移</button>
+                <button type="button" disabled={position === draft.morphemes.length - 1} onClick={() => setDraft((value) => ({ ...value, morphemes: move(value.morphemes, position, position + 1) }))}>下移</button>
+              </span>;
+            })}
+          </div>}
+          <div className={styles.phase3Checks}>
+            {morphemeLibrary.map((morpheme) => <label key={morpheme.id}>
+              <input
+                type="checkbox"
+                checked={draft.morphemes.includes(morpheme.id)}
+                onChange={(event) => setDraft((value) => ({
+                  ...value,
+                  morphemes: event.target.checked
+                    ? [...value.morphemes, morpheme.id]
+                    : value.morphemes.filter((id) => id !== morpheme.id),
+                }))}
+              />
+              {morpheme.form} · {morpheme.meaning}
+            </label>)}
+            {!morphemeLibrary.length && <span>请先在“形态学 → 语素库”创建语素。</span>}
+          </div>
+        </fieldset>
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}
         <div className={styles.lexemeFormActions}>
           <button type="button" onClick={startCreating}>清空</button>
+          {draft.id && <button type="button" onClick={() => void remove()} disabled={saving}>删除</button>}
           <button className={styles.primaryButton} type="submit" disabled={saving}>{saving ? "保存中…" : "保存词条"}</button>
         </div>
       </form>
@@ -219,4 +302,11 @@ export default function LexiconWorkspace({
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+function move<T>(values: T[], from: number, to: number): T[] {
+  const next = [...values];
+  const [value] = next.splice(from, 1);
+  next.splice(to, 0, value);
+  return next;
 }

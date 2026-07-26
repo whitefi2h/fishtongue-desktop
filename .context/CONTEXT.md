@@ -1,5 +1,19 @@
 # FishTongue 开发上下文
 
+## Phase 3 已实现边界
+
+- Schema v3 扩展 `lexemes`，并新增语素、造词配置、概念表、审核批次、候选和批量操作记录。
+- `WordGenerationEngine` 与音变、屈折 Port 分离；唯一桌面 Adapter 复用同一个 Lexurgy
+  Sidecar，协议固定为 v2。
+- 造词算法固定为 `splitmix64-v1`，配置固定为 `wordgen-profile-v1`；种子以十进制字符串
+  传递和保存，禁止经过 JavaScript `number`。
+- 生成和派生只创建持久化审核批次，不直接写入词典。只有用户接受的无冲突候选可通过
+  SQLite 原子事务写入 Lexeme、Sense、语素关系与操作记录。
+- Phase 3 撤销只处理该阶段的批量提交。任何已提交词条在之后被修改，都会令整次撤销
+  原子失败，不允许部分删除。
+- 正式词典、语素库和造词工作台只能读取真实项目 Repository；原型数据不得混入。
+- 总验收命令为 `npm run verify:phase3`；外部人工验收完成前 Phase 3 不标记为正式结项。
+
 本文件记录需要跨阶段长期保持的实现边界。产品目标和用户说明见
 [`README.md`](../README.md)，代理工作规则见 [`AGENTS.md`](../AGENTS.md)。
 Phase 1.5 的页面、交互和功能信息架构见

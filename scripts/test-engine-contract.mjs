@@ -17,7 +17,7 @@ const child = spawn(java, [
   "-jar", jar,
   "host=127.0.0.1",
   "port=0",
-  "protocolVersion=1",
+  "protocolVersion=2",
   `authToken=${token}`,
 ], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 
@@ -37,7 +37,7 @@ const handshake = await Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error("Engine handshake timed out")), 10_000)),
 ]);
 
-if (handshake.event !== "ready" || handshake.protocolVersion !== 1) {
+if (handshake.event !== "ready" || handshake.protocolVersion !== 2) {
   throw new Error(`Unexpected handshake: ${JSON.stringify(handshake)}`);
 }
 
@@ -51,8 +51,9 @@ const request = async (route, init = {}) => {
       ...init.headers,
     },
   });
-  const body = await response.json();
-  if (!response.ok) throw new Error(`${route} failed (${response.status}): ${JSON.stringify(body)}`);
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(`${route} failed (${response.status}): ${text || stderr}`);
   return body;
 };
 
@@ -61,7 +62,7 @@ try {
   if (unauthorized.status !== 401) throw new Error("Health endpoint accepted a request without a token");
 
   const health = await request("/health");
-  if (health.protocolVersion !== 1) throw new Error("Health protocol version mismatch");
+  if (health.protocolVersion !== 2) throw new Error("Health protocol version mismatch");
 
   const validation = await request("/scv1/validate", {
     method: "POST",
@@ -97,6 +98,45 @@ try {
   });
   if (inflection.inflectedForms?.[0] !== "amas") {
     throw new Error(`Unexpected inflection output: ${JSON.stringify(inflection)}`);
+  }
+
+  const profile = {
+    schemaVersion: "wordgen-profile-v1",
+    categories: [
+      { name: "C", symbols: [{ value: "k", weight: 1 }, { value: "th", weight: 1 }] },
+      { name: "V", symbols: [{ value: "a", weight: 1 }, { value: "i", weight: 1 }] },
+    ],
+    templates: [{ pattern: "{C}{V}", weight: 1 }],
+    syllableCounts: [{ count: 2, weight: 1 }],
+    forbiddenPatterns: [],
+    rewriteRules: [],
+    maxAttemptsPerCandidate: 100,
+  };
+  const wordgenValidation = await request("/wordgenv1/validate", {
+    method: "POST",
+    body: JSON.stringify({ profileVersion: "wordgen-profile-v1", profile }),
+  });
+  if (!wordgenValidation.valid) {
+    throw new Error(`Word-generation profile was rejected: ${JSON.stringify(wordgenValidation)}`);
+  }
+
+  const wordgenInput = {
+    profileVersion: "wordgen-profile-v1",
+    profile,
+    seed: "20260726",
+    concepts: [{ conceptKey: "water", gloss: "水" }, { conceptKey: "fire", gloss: "火" }],
+    candidatesPerConcept: 3,
+  };
+  const generatedA = await request("/wordgenv1/generate", {
+    method: "POST",
+    body: JSON.stringify(wordgenInput),
+  });
+  const generatedB = await request("/wordgenv1/generate", {
+    method: "POST",
+    body: JSON.stringify(wordgenInput),
+  });
+  if (JSON.stringify(generatedA) !== JSON.stringify(generatedB)) {
+    throw new Error("Word generation is not deterministic for the same seed and profile");
   }
 
   await request("/shutdown", { method: "POST", body: "{}" });

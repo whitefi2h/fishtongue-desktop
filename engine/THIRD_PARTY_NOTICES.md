@@ -13,3 +13,10 @@ FishTongue bundles a FishTongue-specific desktop API around Lexurgy.
 
 The definitive version and checksum record is `engine-lock.json`. Generated
 preview results are not persisted as project data.
+
+Phase 3 also includes a clean-room deterministic word-generation module.
+PolyGlot (<https://github.com/DraqueT/PolyGlot>, MIT) was reviewed for product
+and algorithm ideas, but no PolyGlot source, Swing UI, XML storage, or binary
+is included. Built-in Swadesh concept labels were normalized and cross-checked
+against Concepticon 3.4.0; their precise provenance and resource hash are
+recorded in `docs/phase-3/source-and-license-audit.md`.

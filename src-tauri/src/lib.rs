@@ -10,8 +10,9 @@ use project_files::{
     save_project_archive,
 };
 use lexurgy::{
-    lexurgy_cancel, lexurgy_ensure_ready, lexurgy_inflect, lexurgy_run, lexurgy_status,
-    lexurgy_validate, shutdown_lexurgy, LexurgySupervisor,
+    lexurgy_cancel, lexurgy_ensure_ready, lexurgy_generate_words, lexurgy_inflect,
+    lexurgy_run, lexurgy_status, lexurgy_validate, lexurgy_validate_wordgen,
+    shutdown_lexurgy, LexurgySupervisor,
 };
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -39,6 +40,8 @@ pub fn run() {
             lexurgy_run,
             lexurgy_cancel,
             lexurgy_inflect,
+            lexurgy_validate_wordgen,
+            lexurgy_generate_words,
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {

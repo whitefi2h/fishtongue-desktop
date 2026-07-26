@@ -11,10 +11,14 @@ import {
 } from "@/fishtongue/domain/models";
 import {
   MemoryEvolutionRepository,
+  MemoryConceptListRepository,
+  MemoryGenerationBatchRepository,
   MemoryInflectionRepository,
   MemoryLanguageRepository,
   MemoryLexemeRepository,
+  MemoryMorphemeRepository,
   MemoryProjectRepository,
+  MemoryWordGenerationProfileRepository,
 } from "@/fishtongue/testing/MemoryRepositories";
 
 const session: ProjectSession = {
@@ -79,6 +83,10 @@ function createService() {
     new MemoryLexemeRepository(),
     new MemoryEvolutionRepository(),
     new MemoryInflectionRepository(),
+    new MemoryMorphemeRepository(),
+    new MemoryWordGenerationProfileRepository(),
+    new MemoryConceptListRepository(),
+    new MemoryGenerationBatchRepository(),
     new MemoryRecent()
   );
   return { service, files, database, projects };

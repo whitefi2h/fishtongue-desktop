@@ -17,7 +17,7 @@ use std::{
 };
 use tauri::{ipc::Channel, AppHandle, Manager, State};
 
-const PROTOCOL_VERSION: u32 = 1;
+const PROTOCOL_VERSION: u32 = 2;
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const VALIDATE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -89,6 +89,16 @@ pub struct SoundChangeInput {
 pub struct InflectionInput {
     rules: Value,
     stems_and_categories: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WordGenerationInput {
+    profile_version: String,
+    profile: Value,
+    seed: Option<String>,
+    concepts: Option<Vec<Value>>,
+    candidates_per_concept: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -747,6 +757,72 @@ pub fn lexurgy_inflect(
     })();
     supervisor.mark_ready();
     result
+}
+
+#[tauri::command]
+pub fn lexurgy_validate_wordgen(
+    app: AppHandle,
+    supervisor: State<'_, LexurgySupervisor>,
+    input: WordGenerationInput,
+) -> Result<Value, LexurgyCommandError> {
+    supervisor.ensure_ready(&app)?;
+    request_wordgen(
+        &supervisor,
+        "/wordgenv1/validate",
+        json!({
+            "profileVersion": input.profile_version,
+            "profile": input.profile,
+        }),
+        VALIDATE_TIMEOUT,
+    )
+}
+
+#[tauri::command]
+pub fn lexurgy_generate_words(
+    app: AppHandle,
+    supervisor: State<'_, LexurgySupervisor>,
+    input: WordGenerationInput,
+) -> Result<Value, LexurgyCommandError> {
+    supervisor.ensure_ready(&app)?;
+    supervisor.mark_busy();
+    let result = request_wordgen(
+        &supervisor,
+        "/wordgenv1/generate",
+        json!({
+            "profileVersion": input.profile_version,
+            "profile": input.profile,
+            "seed": input.seed,
+            "concepts": input.concepts,
+            "candidatesPerConcept": input.candidates_per_concept,
+        }),
+        RUN_TIMEOUT,
+    );
+    supervisor.mark_ready();
+    result
+}
+
+fn request_wordgen(
+    supervisor: &LexurgySupervisor,
+    path: &str,
+    body: Value,
+    timeout: Duration,
+) -> Result<Value, LexurgyCommandError> {
+    let (endpoint, token) = supervisor.connection()?;
+    let response = send_json(&endpoint, &token, path, &body, timeout)?;
+    let success = response.status().is_success();
+    let result = response_json(response)?;
+    if success {
+        Ok(result)
+    } else {
+        Err(LexurgyCommandError::new(
+            "INVALID_REQUEST",
+            result["error"]
+                .as_str()
+                .or_else(|| result["message"].as_str())
+                .or_else(|| result["issues"][0]["message"].as_str())
+                .unwrap_or("造词配置或输入无效。"),
+        ))
+    }
 }
 
 #[tauri::command]

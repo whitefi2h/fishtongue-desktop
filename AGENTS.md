@@ -1,5 +1,13 @@
 # FishTongue Agent Instructions
 
+## Phase 3 当前状态
+
+- Phase 3 实现已完成，外部 Windows 人工验收尚未完成；不得提前创建结项标签。
+- 正式词典、语素、造词配置、审核批次和撤销使用 Schema v3 与真实 Repository。
+- 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
+- 候选不得绕过审核写入词典；批量提交和撤销必须保持原子性。
+- Phase 3 总验收命令是 `npm run verify:phase3`。
+
 ## 开始工作
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。

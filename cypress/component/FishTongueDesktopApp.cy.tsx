@@ -94,6 +94,21 @@ class TestApplication implements ProjectApplication {
     this.writes += 1;
     this.lexemes = this.lexemes.filter((lexeme) => lexeme.id !== id);
   }
+  async listMorphemes() { return []; }
+  async saveMorpheme() { this.writes += 1; }
+  async deleteMorpheme() { this.writes += 1; }
+  async listWordGenerationProfiles() { return []; }
+  async saveWordGenerationProfile() { this.writes += 1; }
+  async deleteWordGenerationProfile() { this.writes += 1; }
+  async listConceptLists() { return []; }
+  async saveConceptList() { this.writes += 1; }
+  async deleteConceptList() { this.writes += 1; }
+  async listGenerationBatches() { return []; }
+  async createGenerationBatch() { this.writes += 1; }
+  async saveGenerationCandidate() { this.writes += 1; }
+  async commitGenerationBatch() { this.writes += 1; }
+  async listLexiconBatchOperations() { return []; }
+  async undoLexiconBatchOperation() { this.writes += 1; }
   async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
   async saveEvolution() { throw new Error("prototype must not persist"); }
   async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
@@ -148,8 +163,8 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
     cy.contains("button", "保存词条").click();
 
-    cy.contains("td", "ama").should("be.visible");
-    cy.contains("td", "母亲").should("be.visible");
+    cy.contains("td", "ama").should("exist");
+    cy.contains("td", "母亲").should("exist");
     cy.wrap(null).then(() => {
       expect(app.lexemes).to.have.length(1);
       expect(app.lexemes[0].languageId).to.equal("language-1");

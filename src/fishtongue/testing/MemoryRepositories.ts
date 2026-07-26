@@ -1,16 +1,26 @@
 import {
   EvolutionRepository,
+  ConceptListRepository,
+  GenerationBatchRepository,
   InflectionRepository,
   LanguageRepository,
+  MorphemeRepository,
   LexemeRepository,
   ProjectRepository,
+  WordGenerationProfileRepository,
 } from "@/fishtongue/application/ports/ProjectPorts";
 import {
   Evolution,
+  ConceptList,
+  GenerationBatch,
+  GenerationCandidate,
   InflectionSystem,
   Language,
+  LexiconBatchOperation,
   Lexeme,
+  Morpheme,
   Project,
+  WordGenerationProfile,
 } from "@/fishtongue/domain/models";
 import { v4 as uuid } from "uuid";
 
@@ -114,6 +124,116 @@ export class MemoryInflectionRepository implements InflectionRepository {
 
   async save(system: InflectionSystem): Promise<void> {
     this.values.set(system.languageId, clone(system));
+  }
+}
+
+export class MemoryMorphemeRepository implements MorphemeRepository {
+  private readonly values = new Map<string, Morpheme>();
+  async list(languageId: string): Promise<Morpheme[]> {
+    return [...this.values.values()]
+      .filter((value) => value.languageId === languageId)
+      .map(clone);
+  }
+  async save(value: Morpheme): Promise<void> {
+    this.values.set(value.id, clone(value));
+  }
+  async delete(id: string): Promise<void> {
+    this.values.delete(id);
+  }
+}
+
+export class MemoryWordGenerationProfileRepository
+  implements WordGenerationProfileRepository {
+  private readonly values = new Map<string, WordGenerationProfile>();
+  async list(languageId: string): Promise<WordGenerationProfile[]> {
+    return [...this.values.values()]
+      .filter((value) => value.languageId === languageId)
+      .map(clone);
+  }
+  async save(value: WordGenerationProfile): Promise<void> {
+    if (value.isDefault) {
+      for (const [id, profile] of this.values) {
+        if (profile.languageId === value.languageId) {
+          this.values.set(id, { ...profile, isDefault: false });
+        }
+      }
+    }
+    this.values.set(value.id, clone(value));
+  }
+  async delete(id: string): Promise<void> {
+    this.values.delete(id);
+  }
+}
+
+export class MemoryConceptListRepository implements ConceptListRepository {
+  private readonly values = new Map<string, ConceptList>();
+  async list(projectId: string): Promise<ConceptList[]> {
+    return [...this.values.values()]
+      .filter((value) => value.projectId === projectId)
+      .map(clone);
+  }
+  async save(value: ConceptList): Promise<void> {
+    this.values.set(value.id, clone(value));
+  }
+  async delete(id: string): Promise<void> {
+    if (!this.values.get(id)?.readonly) this.values.delete(id);
+  }
+}
+
+export class MemoryGenerationBatchRepository implements GenerationBatchRepository {
+  private readonly values = new Map<string, GenerationBatch>();
+  private readonly operations = new Map<string, LexiconBatchOperation>();
+  async list(languageId: string): Promise<GenerationBatch[]> {
+    return [...this.values.values()]
+      .filter((value) => value.languageId === languageId)
+      .map(clone);
+  }
+  async get(id: string): Promise<GenerationBatch | null> {
+    const value = this.values.get(id);
+    return value ? clone(value) : null;
+  }
+  async create(value: GenerationBatch): Promise<void> {
+    this.values.set(value.id, clone(value));
+  }
+  async saveCandidate(batchId: string, candidate: GenerationCandidate): Promise<void> {
+    const batch = this.values.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    batch.candidates = batch.candidates.map((value) =>
+      value.id === candidate.id ? clone(candidate) : value
+    );
+  }
+  async commit(batchId: string, operationId: string, committedAt: string): Promise<void> {
+    const batch = this.values.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    batch.status = "committed";
+    batch.committedAt = committedAt;
+    batch.candidates = batch.candidates.map((candidate) =>
+      candidate.status === "accepted" ? { ...candidate, status: "committed" } : candidate
+    );
+    this.operations.set(operationId, {
+      id: operationId,
+      languageId: batch.languageId,
+      batchId,
+      kind: batch.type === "derivation" ? "derivation_commit" : "generation_commit",
+      createdAt: committedAt,
+    });
+  }
+  async listOperations(languageId: string): Promise<LexiconBatchOperation[]> {
+    return [...this.operations.values()]
+      .filter((value) => value.languageId === languageId)
+      .map(clone);
+  }
+  async undo(operationId: string, undoneAt: string): Promise<void> {
+    const operation = this.operations.get(operationId);
+    if (!operation || operation.undoneAt) throw new Error("该操作不能撤销。");
+    operation.undoneAt = undoneAt;
+    const batch = this.values.get(operation.batchId);
+    if (batch) {
+      batch.status = "undone";
+      batch.candidates = batch.candidates.map((candidate) =>
+        candidate.status === "committed" ? { ...candidate, status: "accepted" } : candidate
+      );
+    }
   }
 }
 

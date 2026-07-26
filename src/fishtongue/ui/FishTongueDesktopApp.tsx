@@ -2,9 +2,11 @@ import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/D
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
+import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
 import { Language } from "@/fishtongue/domain/models";
 import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
+import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -139,11 +141,13 @@ export default function FishTongueDesktopApp({
   windowPort,
   soundChangeService,
   inflectionService,
+  wordGenerationService,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
+  wordGenerationService?: WordGenerationService;
 }) {
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -494,6 +498,7 @@ export default function FishTongueDesktopApp({
                 snapshot={snapshot}
                 soundChangeService={soundChangeService}
                 inflectionService={inflectionService}
+                wordGenerationService={wordGenerationService}
                 lexiconCreateRequest={lexiconCreateRequest}
                 onProjectChanged={(next) => setSnapshot({ ...next })}
                 onStatus={setMessage}
@@ -896,6 +901,7 @@ function PageContent(props: {
   snapshot: ProjectSnapshot | null;
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
+  wordGenerationService?: WordGenerationService;
   lexiconCreateRequest: number;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
@@ -919,15 +925,22 @@ function PageContent(props: {
     case "dialects": return <DialectsPage />;
     case "phonology": return <PhonologyPage />;
     case "morphology": return props.snapshot
-      ? <InflectionWorkspace application={props.application} service={props.inflectionService} languageId={props.language.id} live={liveLanguage} />
+      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} />
       : <MorphologyPage />;
     case "lexicon": return props.snapshot
-      ? <LexiconWorkspace
+      ? <WordGenerationWorkspace
           application={props.application}
+          service={props.wordGenerationService}
           languageId={props.language.id}
-          createRequest={props.lexiconCreateRequest}
           onProjectChanged={props.onProjectChanged}
           onStatus={props.onStatus}
+          dictionary={<LexiconWorkspace
+            application={props.application}
+            languageId={props.language.id}
+            createRequest={props.lexiconCreateRequest}
+            onProjectChanged={props.onProjectChanged}
+            onStatus={props.onStatus}
+          />}
         />
       : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;

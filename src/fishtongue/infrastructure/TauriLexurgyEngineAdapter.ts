@@ -15,11 +15,18 @@ import {
   ValidationResult,
 } from "@/fishtongue/application/ports/SoundChangeEngine";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import {
+  WordGenerationEngine,
+  WordGenerationInput,
+  WordGenerationResult,
+  WordGenerationValidationResult,
+} from "@/fishtongue/application/ports/WordGenerationEngine";
+import { WordGenerationConfig } from "@/fishtongue/domain/models";
 
 type CommandError = { code?: string; message?: string } | string;
 
 export default class TauriLexurgyEngineAdapter
-  implements SoundChangeEngine, InflectionEngine
+  implements SoundChangeEngine, InflectionEngine, WordGenerationEngine
 {
   getStatus(): Promise<LexurgyEngineStatus> {
     return command("lexurgy_status");
@@ -59,6 +66,35 @@ export default class TauriLexurgyEngineAdapter
       })),
     };
     return cancellable(command("lexurgy_inflect", { input: request }), signal);
+  }
+
+  validateProfile(
+    profile: WordGenerationConfig
+  ): Promise<WordGenerationValidationResult> {
+    return command("lexurgy_validate_wordgen", {
+      input: { profileVersion: "wordgen-profile-v1", profile },
+    });
+  }
+
+  generate(
+    input: WordGenerationInput,
+    signal?: AbortSignal
+  ): Promise<WordGenerationResult> {
+    return cancellable(
+      command("lexurgy_generate_words", {
+        input: {
+          profileVersion: input.profile.configVersion,
+          profile: input.profile.config,
+          seed: input.seed,
+          concepts: input.concepts.map((concept) => ({
+            conceptKey: concept.conceptKey,
+            gloss: concept.gloss,
+          })),
+          candidatesPerConcept: input.candidatesPerConcept,
+        },
+      }),
+      signal
+    );
   }
 }
 
