@@ -1,6 +1,6 @@
 {
   "name": "fishtongue-desktop",
-  "version": "0.2.0-phase.2",
+  "version": "0.3.0-phase.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
