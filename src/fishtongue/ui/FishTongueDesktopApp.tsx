@@ -166,7 +166,7 @@ export default function FishTongueDesktopApp({
   const [recoveryName, setRecoveryName] = useState<string>();
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
-    () => snapshot?.languages.length
+    () => snapshot
       ? snapshot.languages.map(toPrototypeLanguage)
       : prototypeProject.languages,
     [snapshot]
@@ -261,9 +261,27 @@ export default function FishTongueDesktopApp({
 
   const openProject = async (path?: string) => {
     try {
-      enterWorkspace(await application.openProject(path));
-    } catch {
-      setMessage("无法打开项目。请检查文件位置或选择其他项目。");
+      const next = await application.openProject(path);
+      if (!next) {
+        setMessage("已取消打开项目。");
+        return;
+      }
+      enterWorkspace(next);
+    } catch (reason) {
+      setMessage(`无法打开项目：${errorMessage(reason)}`);
+    }
+  };
+
+  const importProject = async () => {
+    try {
+      const next = await application.importProject();
+      if (!next) {
+        setMessage("已取消导入项目。");
+        return;
+      }
+      enterWorkspace(next);
+    } catch (reason) {
+      setMessage(`项目导入失败：${errorMessage(reason)}`);
     }
   };
 
@@ -357,8 +375,12 @@ export default function FishTongueDesktopApp({
           onPreview={() => enterWorkspace()}
           onOpen={(path) => void openProject(path)}
           onCreate={() => setDialog("new-project")}
-          onImport={() => void application.importProject().then(enterWorkspace).catch(() => setMessage("项目导入失败。"))}
+          onImport={() => void importProject()}
           onRecover={() => void application.recoverProject().then(enterWorkspace).catch(() => setMessage("项目恢复失败。"))}
+          onDiscardRecovery={() => void application.discardRecovery().then(() => {
+            setRecoveryName(undefined);
+            setMessage("已丢弃异常退出留下的工作区；原项目文件未受影响。");
+          }).catch((reason) => setMessage(`无法丢弃恢复工作区：${errorMessage(reason)}`))}
           message={message}
         />
       ) : (
@@ -429,6 +451,7 @@ export default function FishTongueDesktopApp({
                 snapshot={snapshot}
                 soundChangeService={soundChangeService}
                 inflectionService={inflectionService}
+                onCreateLanguage={() => setDialog("new-language")}
               />
             </main>
             {aiOpen && <AiSidebar onClose={() => setAiOpen(false)} />}
@@ -442,6 +465,9 @@ export default function FishTongueDesktopApp({
         onClose={() => setDialog(null)}
         onCreateProject={async (name) => {
           const next = await application.createProject(name);
+          if (!next) {
+            throw new Error("已取消选择保存位置，项目没有创建。");
+          }
           setDialog(null);
           enterWorkspace(next);
         }}
@@ -732,13 +758,13 @@ function Navigation({ collapsed, route, level, language, locale, project, onNavi
 
 function PreviewBanner({ locale, live }: { locale: UiLocale; live: boolean }) {
   return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{live
-    ? (locale === "zh-CN" ? "真实项目模式 · 规则和测试输入会保存，生成结果仅供预览" : "Project mode · Rules and test inputs are saved; generated results are previews")
+    ? (locale === "zh-CN" ? "真实项目模式 · 当前仅项目、语言、演化和屈折数据会写入；生成结果仅供预览" : "Project mode · Only project, language, evolution, and inflection data are currently saved; generated results are previews")
     : t(locale, "preview")}</span></div>;
 }
 
 function PageHeader({ route, locale, live, onCreate }: { route: WorkspaceRoute; locale: UiLocale; live: boolean; onCreate: () => void }) {
   const item = routesById[route];
-  const featureState = live && ["evolution", "morphology"].includes(route) ? "live" : item.state;
+  const featureState = live && ["project-home", "languages", "evolution", "morphology"].includes(route) ? "live" : item.state;
   return <header className={styles.pageHeader}>
     <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={featureState} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
     <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>
@@ -810,16 +836,20 @@ function PageContent(props: {
   snapshot: ProjectSnapshot | null;
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
+  onCreateLanguage: () => void;
 }) {
   const liveLanguage = Boolean(
     props.snapshot?.languages.some((language) => language.id === props.language.id)
   );
+  const projectLanguages = props.snapshot
+    ? props.snapshot.languages.map(toPrototypeLanguage)
+    : prototypeProject.languages;
   switch (props.route) {
-    case "project-home": return <ProjectHome onLanguage={props.onLanguage} />;
-    case "languages": return <LanguagesPage onLanguage={props.onLanguage} />;
-    case "genealogy": return <GenealogyPage onLanguage={props.onLanguage} />;
-    case "events": return <EventsPage />;
-    case "project-settings": return <SettingsPage />;
+    case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "genealogy": return props.snapshot ? <LiveProjectPlaceholder title="语言谱系尚未接入真实项目" /> : <GenealogyPage onLanguage={props.onLanguage} />;
+    case "events": return props.snapshot ? <LiveProjectPlaceholder title="历史事件尚未接入真实项目" /> : <EventsPage />;
+    case "project-settings": return props.snapshot ? <LiveProjectPlaceholder title="项目设置尚未接入真实项目" /> : <SettingsPage />;
     case "language-overview": return <LanguageOverview language={props.language} />;
     case "language-properties": return <PropertiesPage language={props.language} />;
     case "stages": return <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
@@ -838,36 +868,68 @@ function PageContent(props: {
   }
 }
 
-function ProjectHome({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
+function ProjectHome({ languages, live, onLanguage, onCreateLanguage }: {
+  languages: PrototypeLanguage[];
+  live: boolean;
+  onLanguage: (language: PrototypeLanguage) => void;
+  onCreateLanguage: () => void;
+}) {
+  if (live && languages.length === 0) {
+    return <EmptyState
+      title="项目中还没有语言"
+      body="先创建第一门语言，随后即可保存音变规则、测试词和屈折系统。"
+      action="创建第一门语言"
+      onAction={onCreateLanguage}
+    />;
+  }
+  const summary = live
+    ? [[String(languages.length), "种语言"], ["—", "个词条"], ["—", "条继承关系"], ["0", "项待处理"]]
+    : [["4", "种语言"], ["2,640", "个词条"], ["3", "条继承关系"], ["22", "项待处理"]];
   return <div className={styles.pageGrid}>
     <section className={styles.summaryStrip}>
-      {[["4", "种语言"], ["2,640", "个词条"], ["3", "条继承关系"], ["22", "项待处理"]].map(([value, label]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}
+      {summary.map(([value, label]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}
     </section>
     <section className={styles.surfacePanel}>
       <PanelHeading title="语言概览" action="查看全部" />
-      <div className={styles.languageTable}>{prototypeProject.languages.map((language) => <button key={language.id} onClick={() => onLanguage(language)}>
+      <div className={styles.languageTable}>{languages.map((language) => <button key={language.id} onClick={() => onLanguage(language)}>
         <span className={styles.languageAvatar}>{language.name[0]}</span><span><strong>{language.name}</strong><small>{language.nativeName} · {language.family}</small></span>
         <span>{language.era}</span><span>{language.words.toLocaleString()} 词</span><StatusDot warnings={language.warnings} /><ChevronRightIcon aria-hidden="true" />
       </button>)}</div>
     </section>
-    <section className={styles.splitColumns}>
+    {!live && <section className={styles.splitColumns}>
       <div className={styles.surfacePanel}><PanelHeading title="最近活动" /><Timeline /></div>
       <div className={styles.surfacePanel}><PanelHeading title="需要处理" /><IssueList /></div>
-    </section>
+    </section>}
   </div>;
 }
 
-function LanguagesPage({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
+function LanguagesPage({ languages, live, onLanguage, onCreateLanguage }: {
+  languages: PrototypeLanguage[];
+  live: boolean;
+  onLanguage: (language: PrototypeLanguage) => void;
+  onCreateLanguage: () => void;
+}) {
+  if (live && languages.length === 0) {
+    return <EmptyState title="暂无语言" body="这个项目是空的。创建语言后，它会出现在这里。" action="创建语言" onAction={onCreateLanguage} />;
+  }
   return <section className={styles.surfacePanel}>
-    <div className={styles.filterRow}><span>状态：全部</span><span>语系：全部</span><span>地区：全部</span><span>4 种语言</span></div>
+    <div className={styles.filterRow}><span>状态：全部</span><span>语系：全部</span><span>地区：全部</span><span>{languages.length} 种语言</span></div>
     <table className={`${styles.dataTable} ${styles.languagesDataTable}`}><thead><tr><th>语言</th><th>状态</th><th>语系</th><th>年代</th><th>地区</th><th>词条</th><th>问题</th></tr></thead>
-      <tbody>{prototypeProject.languages.map((language) => <tr key={language.id}>
+      <tbody>{languages.map((language) => <tr key={language.id}>
         <td><button className={styles.textButton} aria-label={`打开${language.name}`} onClick={() => onLanguage(language)}><strong>{language.name}</strong><small>{language.nativeName}</small></button></td>
         <td><span className={styles.statusTag}>{language.status}</span></td><td>{language.family}</td><td>{language.era}</td><td>{language.region}</td>
         <td>{language.words.toLocaleString()}</td><td><StatusDot warnings={language.warnings} /></td>
       </tr>)}</tbody>
     </table>
   </section>;
+}
+
+function LiveProjectPlaceholder({ title }: { title: string }) {
+  return <EmptyState
+    title={title}
+    body="此页面目前只有设计原型。为避免把测试数据误认为项目内容，真实项目中暂不显示原型资料。"
+    action="后续阶段开放"
+  />;
 }
 
 function GenealogyPage({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
@@ -1025,25 +1087,27 @@ function StatusBar({ snapshot, level, language, stage, message }: {
 }) {
   return <footer className={styles.statusBar}><span><CheckCircledIcon aria-hidden="true" />{snapshot?.dirty ? "有未保存修改" : "已保存"}</span><span className={styles.statusPath}>{snapshot?.session.sourcePath ?? prototypeProject.path}</span>
     <span>{level === "language" ? `${language.name} / ${stage || "默认状态"}` : "项目级视图"}</span>
-    <span><ExclamationTriangleIcon aria-hidden="true" />{level === "language" ? language.warnings : prototypeProject.languages.reduce((total, item) => total + item.warnings, 0)} 项问题</span>
+    <span><ExclamationTriangleIcon aria-hidden="true" />{level === "language" ? language.warnings : snapshot ? 0 : prototypeProject.languages.reduce((total, item) => total + item.warnings, 0)} 项问题</span>
     <span>AI 未连接</span><span className={styles.statusMessage} aria-live="polite" aria-atomic="true">{message}</span></footer>;
 }
 
 function WelcomePage(props: {
   recent: { name: string; path: string }[]; recoveryName?: string; message: string;
-  onPreview: () => void; onOpen: (path?: string) => void; onCreate: () => void; onImport: () => void; onRecover: () => void;
+  onPreview: () => void; onOpen: (path?: string) => void; onCreate: () => void; onImport: () => void; onRecover: () => void; onDiscardRecovery: () => void;
 }) {
   return <main className={styles.welcome} id="main-workspace">
     <section className={styles.welcomeIntro}><div className={styles.welcomeMark}>F</div><div><h1>FishTongue</h1><p>创建、整理和演化属于一个世界的语言。</p></div></section>
-    {props.recoveryName && <section className={styles.recoveryBar}><ExclamationTriangleIcon aria-hidden="true" /><div><strong>发现未正常关闭的项目</strong><p>{props.recoveryName} 有可恢复的本地工作区。</p></div><button onClick={props.onRecover}>恢复项目</button></section>}
+    {props.recoveryName && <section className={styles.recoveryBar}><ExclamationTriangleIcon aria-hidden="true" /><div><strong>发现未正常关闭的项目</strong><p>{props.recoveryName} 有可恢复的本地工作区。</p></div><button onClick={props.onDiscardRecovery}>丢弃工作区</button><button onClick={props.onRecover}>恢复项目</button></section>}
     <section className={styles.welcomeGrid}>
       <div className={styles.welcomeActions}><h2>开始工作</h2><button className={styles.welcomePrimary} onClick={props.onCreate}><PlusIcon aria-hidden="true" /><span><strong>新建项目</strong><small>从快速开始或空白语言开始</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={() => props.onOpen()}><FileTextIcon aria-hidden="true" /><span><strong>打开项目</strong><small>打开 .fishtongue 文件</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={props.onImport}><ArrowLeftIcon aria-hidden="true" /><span><strong>导入项目</strong><small>导入受支持的项目版本</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={props.onPreview}><GridIcon aria-hidden="true" /><span><strong>浏览设计原型</strong><small>查看完整桌面框架与全部页面</small></span><ChevronRightIcon aria-hidden="true" /></button>
       </div>
-      <div className={styles.recentProjects}><div className={styles.sectionHeading}><h2>最近项目</h2><button>查看全部</button></div>
-        {(props.recent.length ? props.recent : [{ name: "北海编年史", path: "D:\\Languages\\NorthSea.fishtongue" }, { name: "帝国边境语言", path: "D:\\Languages\\Frontier.fishtongue" }]).map((item)=><button key={item.path} onClick={()=>props.onOpen(item.path)}><span className={styles.fileGlyph}>FT</span><span><strong>{item.name}</strong><small>{item.path}</small></span><DotsHorizontalIcon aria-hidden="true" /></button>)}
+      <div className={styles.recentProjects}><div className={styles.sectionHeading}><h2>最近项目</h2><button disabled={!props.recent.length}>查看全部</button></div>
+        {props.recent.length
+          ? props.recent.map((item)=><button key={item.path} onClick={()=>props.onOpen(item.path)}><span className={styles.fileGlyph}>FT</span><span><strong>{item.name}</strong><small>{item.path}</small></span><DotsHorizontalIcon aria-hidden="true" /></button>)
+          : <p>还没有最近项目。新建或打开项目后会显示在这里。</p>}
       </div>
     </section>
     <footer className={styles.welcomeFooter}><span>本地模式 · 无需登录</span><span>{props.message}</span><span>Phase 1.5 设计原型</span></footer>
@@ -1055,10 +1119,17 @@ function AppDialog(props: {
   onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => Promise<void> | void;
 }) {
   const [name, setName] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const previousKindRef = useRef<DialogKind>(null);
-  useEffect(() => { if (props.kind === "new-project") setName("我的语言项目"); if (props.kind === "new-language") setName("新语言"); }, [props.kind]);
+  useEffect(() => {
+    setSubmitError("");
+    setSubmitting(false);
+    if (props.kind === "new-project") setName("我的语言项目");
+    if (props.kind === "new-language") setName("新语言");
+  }, [props.kind]);
   useEffect(() => {
     if (props.kind) {
       if (!previousKindRef.current) {
@@ -1079,10 +1150,18 @@ function AppDialog(props: {
     previousKindRef.current = props.kind;
   }, [props.kind]);
   if (!props.kind) return null;
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (props.kind === "new-project") void props.onCreateProject(name);
-    if (props.kind === "new-language") void props.onCreateLanguage(name);
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      if (props.kind === "new-project") await props.onCreateProject(name);
+      if (props.kind === "new-language") await props.onCreateLanguage(name);
+    } catch (reason) {
+      setSubmitError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
   };
   return <div className={styles.dialogOverlay} role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget) props.onClose();}}>
     <div
@@ -1136,9 +1215,10 @@ function AppDialog(props: {
           <p>运行结果只作预览，不会写回词典，也不会创建语言阶段。</p>
         </div>
       : props.kind === "search" ? <div className={styles.dialogBody}><label className={styles.commandInput}><MagnifyingGlassIcon aria-hidden="true" /><input data-dialog-initial-focus aria-label="搜索页面、语言、词条或命令" name="global-search" autoComplete="off" placeholder="搜索页面、语言、词条或命令…" /></label><div className={styles.commandResults}>{["打开阿兰语","前往词典","查看语言谱系","切换深色主题"].map((v)=><button key={v}>{v}<kbd>↵</kbd></button>)}</div></div>
-      : <form onSubmit={submit}><div className={styles.dialogBody}><label className={styles.dialogField}><span>{props.kind === "new-project" ? "项目名称" : "语言名称"}</span><input data-dialog-initial-focus name={props.kind === "new-project" ? "project-name" : "language-name"} autoComplete="off" value={name} onChange={(event)=>setName(event.target.value)} /></label>
+      : <form onSubmit={(event) => void submit(event)}><div className={styles.dialogBody}><label className={styles.dialogField}><span>{props.kind === "new-project" ? "项目名称" : "语言名称"}</span><input data-dialog-initial-focus name={props.kind === "new-project" ? "project-name" : "language-name"} autoComplete="off" value={name} onChange={(event)=>setName(event.target.value)} /></label>
         {props.kind === "new-project" && <><label className={styles.dialogField}><span>项目说明</span><textarea name="project-description" autoComplete="off" placeholder="可选；本轮不写入项目…" /></label><div className={styles.wizardChoice}><button type="button" data-active><strong>快速开始</strong><span>参考现实语言规则</span></button><button type="button"><strong>从零构建</strong><span>创建空白语言</span></button></div></>}</div>
-        <div className={styles.dialogFooter}><button type="button" onClick={props.onClose}>取消</button><button className={styles.primaryButton} disabled={!name.trim()}>{props.kind === "new-project" ? "创建并选择位置" : "进入语言工作区"}</button></div></form>}
+        {submitError && <p className={styles.dialogError} role="alert">{submitError}</p>}
+        <div className={styles.dialogFooter}><button type="button" disabled={submitting} onClick={props.onClose}>取消</button><button className={styles.primaryButton} disabled={!name.trim() || submitting}>{submitting ? "正在创建…" : props.kind === "new-project" ? "创建并选择位置" : "进入语言工作区"}</button></div></form>}
     </div>
   </div>;
 }
@@ -1153,3 +1233,10 @@ function StatusDot({ warnings }: { warnings: number }) { return <span className=
 function Timeline() { return <div className={styles.timeline}>{[["前 80","诸王时期开始"],["112","北方贸易接触"],["260","第一次正字法整理"],["340","北迁与方言分化"]].map(([year,event],i)=><div key={year}><span>{year}</span><i data-last={i===3}/><div><strong>{event}</strong><small>{i===1 ? "涉及阿兰语与诺尔语 · 18 个借词候选" : "历史事件 · 设计预览"}</small></div></div>)}</div>; }
 function IssueList() { return <div className={styles.issueList}>{[["音变规则","3 条规则尚未验证"],["词典","7 个词条缺少来源"],["阶段","失落世纪被标记为无记录"]].map(([group,text])=><button key={text}><ExclamationTriangleIcon aria-hidden="true" /><span><strong>{text}</strong><small>{group}</small></span><ChevronRightIcon aria-hidden="true" /></button>)}</div>; }
 function documentationLabel(value?: PrototypeLanguage["stages"][number]["documentation"]) { return value === "recorded" ? "有记录" : value === "partial" ? "部分记录" : value === "unrecorded" ? "无记录" : value === "reconstructed" ? "重构" : "未设置"; }
+function errorMessage(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "object" && reason && "message" in reason) {
+    return String((reason as { message: unknown }).message);
+  }
+  return String(reason);
+}

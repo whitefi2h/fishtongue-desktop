@@ -1,6 +1,6 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
-import { Evolution, InflectionSystem, Language, Lexeme } from "@/fishtongue/domain/models";
+import { Evolution, InflectionSystem, Language, Lexeme, RecoveryCandidate } from "@/fishtongue/domain/models";
 import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 
 class TestWindowPort implements DesktopWindowPort {
@@ -17,6 +17,7 @@ class TestWindowPort implements DesktopWindowPort {
 class TestApplication implements ProjectApplication {
   writes = 0;
   snapshot: ProjectSnapshot | null = null;
+  recovery: RecoveryCandidate | null = null;
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -36,11 +37,27 @@ class TestApplication implements ProjectApplication {
   async saveProjectAs() { this.writes += 1; return this.snapshot; }
   async closeProject() { this.snapshot = null; }
   async recoverProject() { return this.snapshot!; }
-  async discardRecovery() {}
-  async inspectRecovery() { return null; }
+  async discardRecovery() { this.recovery = null; }
+  async inspectRecovery() { return this.recovery; }
   async listRecentProjects() { return []; }
   async listLanguages(): Promise<Language[]> { return []; }
-  async createLanguage(): Promise<Language> { throw new Error("prototype must not persist"); }
+  async createLanguage(name: string): Promise<Language> {
+    if (!this.snapshot) throw new Error("当前没有打开的项目");
+    const now = new Date().toISOString();
+    const language: Language = {
+      id: `language-${this.snapshot.languages.length + 1}`,
+      projectId: this.snapshot.project.id,
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.writes += 1;
+    this.snapshot = {
+      ...this.snapshot,
+      languages: [...this.snapshot.languages, language],
+    };
+    return language;
+  }
   async renameLanguage() { throw new Error("prototype must not persist"); }
   async deleteLanguage() { throw new Error("prototype must not persist"); }
   async listLexemes(): Promise<Lexeme[]> { return []; }
@@ -55,6 +72,53 @@ class TestApplication implements ProjectApplication {
 
 describe("FishTongue Phase 1.5 desktop prototype", () => {
   beforeEach(() => cy.viewport(1440, 900));
+
+  it("keeps a new real project empty until the user creates a real language", () => {
+    const app = new TestApplication();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("真实测试项目");
+    cy.contains("button", "创建并选择位置").click();
+
+    cy.contains("项目中还没有语言").should("be.visible");
+    cy.contains("北海编年史").should("not.exist");
+    cy.contains("阿兰语").should("not.exist");
+
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("测试祖语");
+    cy.contains("button", "进入语言工作区").click();
+
+    cy.get("[aria-label='当前位置']").should("contain.text", "真实测试项目");
+    cy.get("[aria-label='当前位置']").should("contain.text", "测试祖语");
+    cy.contains("真实项目模式").should("be.visible");
+    cy.wrap(null).then(() => {
+      expect(app.snapshot?.languages.map((language) => language.name)).to.deep.equal(["测试祖语"]);
+    });
+  });
+
+  it("lets the user discard a stale recovery workspace before creating a project", () => {
+    const app = new TestApplication();
+    const now = new Date().toISOString();
+    app.recovery = {
+      manifest: {
+        formatVersion: 1,
+        databaseSchemaVersion: 2,
+        projectId: "stale-project",
+        name: "未完成项目",
+        createdAt: now,
+        updatedAt: now,
+        appVersion: "test",
+      },
+      sourcePath: "D:\\Languages\\stale.fishtongue",
+    };
+
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+    cy.contains("发现未正常关闭的项目").should("be.visible");
+    cy.contains("button", "丢弃工作区").click();
+    cy.contains("发现未正常关闭的项目").should("not.exist");
+    cy.wrap(null).then(() => expect(app.recovery).to.equal(null));
+  });
 
   it("uses custom chrome and exposes the complete workspace", () => {
     const app = new TestApplication();
