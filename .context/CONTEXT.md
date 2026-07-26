@@ -21,6 +21,8 @@ Phase 1.5 的页面、交互和功能信息架构见
 - 活动数据库固定为应用配置目录下 `active-project/project.db`。
 - `src-tauri/src/lexurgy.rs` 独占 Lexurgy 进程、认证令牌、回环 HTTP、超时、
   取消、日志和退出清理；React 只能经 Application Port 和 Tauri Command 使用。
+- Windows 上传给 Java 启动器的 JRE/JAR 路径不得保留 Tauri/Win32 的 `\\?\`
+  verbatim 前缀；Java 可读取该路径中的清单，却无法从同一 JAR 加载主类。
 - `engine/engine-lock.json` 固定独立引擎提交、上游提交、协议、发布包、Fat JAR、
   Temurin 源和 SHA-256，构建不得接受不匹配产物。
 

@@ -405,7 +405,32 @@ fn validate_engine_paths(
             "安装包中的 Lexurgy 或 Java 运行文件缺失。",
         ));
     }
-    Ok((java, jar))
+    // Tauri can return verbatim Windows paths (`\\?\C:\...`). The Java
+    // launcher can open the JAR manifest through that path, but its class
+    // loader then fails to resolve the manifest's Main-Class. Convert the
+    // existing, validated paths to the regular Windows representation before
+    // passing them across the process boundary.
+    Ok((
+        java_launcher_compatible_path(java),
+        java_launcher_compatible_path(jar),
+    ))
+}
+
+#[cfg(windows)]
+fn java_launcher_compatible_path(path: PathBuf) -> PathBuf {
+    let value = path.to_string_lossy();
+    if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
+    if let Some(local) = value.strip_prefix(r"\\?\") {
+        return PathBuf::from(local);
+    }
+    path
+}
+
+#[cfg(not(windows))]
+fn java_launcher_compatible_path(path: PathBuf) -> PathBuf {
+    path
 }
 
 fn generate_token() -> String {
@@ -731,6 +756,23 @@ mod tests {
         assert_eq!(
             absolute_job_url("http://127.0.0.1:49152", "/scv1/poll/test"),
             "http://127.0.0.1:49152/scv1/poll/test"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn java_launcher_paths_remove_verbatim_prefix_without_losing_unicode_or_spaces() {
+        assert_eq!(
+            java_launcher_compatible_path(PathBuf::from(
+                r"\\?\C:\用户目录\Fish Tongue\fishtongue-engine.jar"
+            )),
+            PathBuf::from(r"C:\用户目录\Fish Tongue\fishtongue-engine.jar")
+        );
+        assert_eq!(
+            java_launcher_compatible_path(PathBuf::from(
+                r"\\?\UNC\server\共享目录\Fish Tongue\fishtongue-engine.jar"
+            )),
+            PathBuf::from(r"\\server\共享目录\Fish Tongue\fishtongue-engine.jar")
         );
     }
 }
