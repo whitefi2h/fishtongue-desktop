@@ -140,4 +140,17 @@ describe("ProjectSessionService", () => {
     expect(database.opened).toBe(false);
     expect(files.discards).toBe(1);
   });
+
+  it("can explicitly abandon a recovered workspace without overwriting its source", async () => {
+    const { service, files, database } = createService();
+    await service.createProject("测试项目");
+    const savesBeforeAbandon = files.saves;
+
+    await service.abandonProject();
+
+    expect(service.getSnapshot()).toBeNull();
+    expect(database.opened).toBe(false);
+    expect(files.discards).toBe(1);
+    expect(files.saves).toBe(savesBeforeAbandon);
+  });
 });

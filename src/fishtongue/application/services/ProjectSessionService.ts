@@ -103,6 +103,14 @@ export default class ProjectSessionService implements ProjectApplication {
     this.snapshot = null;
   }
 
+  async abandonProject(): Promise<void> {
+    this.cancelAutoSave();
+    await this.saveQueue;
+    await this.database.close();
+    await this.files.discardWorkspace();
+    this.snapshot = null;
+  }
+
   async recoverProject(): Promise<ProjectSnapshot> {
     if (this.snapshot) await this.closeProject();
     await this.database.close();

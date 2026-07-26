@@ -26,6 +26,7 @@ class TestApplication implements ProjectApplication {
   recovery: RecoveryCandidate | null = null;
   lexemes: Lexeme[] = [];
   closes = 0;
+  abandons = 0;
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -42,8 +43,19 @@ class TestApplication implements ProjectApplication {
   async openProject() { return this.snapshot; }
   async importProject() { return this.snapshot; }
   async saveProject() { this.writes += 1; return this.snapshot!; }
-  async saveProjectAs() { this.writes += 1; return this.snapshot; }
+  async saveProjectAs() {
+    this.writes += 1;
+    if (this.snapshot) {
+      this.snapshot = {
+        ...this.snapshot,
+        session: { ...this.snapshot.session, requiresSaveAs: false },
+        dirty: false,
+      };
+    }
+    return this.snapshot;
+  }
   async closeProject() { this.closes += 1; this.snapshot = null; }
+  async abandonProject() { this.abandons += 1; this.snapshot = null; }
   async recoverProject() { return this.snapshot!; }
   async discardRecovery() { this.recovery = null; }
   async inspectRecovery() { return this.recovery; }
@@ -157,6 +169,41 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("button[title='关闭']").click();
     cy.wrap(null).then(() => {
       expect(app.closes).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("closes immediately from the welcome page when no project is open", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(0);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("offers an explicit discard-and-exit path for a recovered project", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(async () => {
+      await app.createProject("恢复退出测试");
+      app.snapshot = {
+        ...app.snapshot!,
+        session: { ...app.snapshot!.session, requiresSaveAs: true, recovered: true },
+        dirty: true,
+      };
+    });
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.contains("保存项目后退出").should("be.visible");
+    cy.contains("button", "放弃恢复并退出").click();
+    cy.wrap(null).then(() => {
+      expect(app.abandons).to.equal(1);
       expect(app.snapshot).to.equal(null);
       expect(windowPort.calls).to.include("close");
     });

@@ -91,6 +91,8 @@ SQLite、文件系统、网络、系统进程或秘密；任何修改先产生�
   Sense；原型词典不得作为真实项目或 Evolution“当前词典”输入源。
 - 所有正常关窗入口必须先经 `ProjectApplication.closeProject()` 完成保存、数据库
   关闭和活动工作区清理，再允许 Tauri 真正关闭窗口；进程被强制终止时才保留恢复工作区。
+- Tauri 最终关窗前必须解除前端 `onCloseRequested` 监听，再调用已授权的 `close`；
+  不得依赖监听器内部的隐式 `destroy`，也不得为此扩大窗口权限。
 - 音变和屈折预览不得修改 Lexeme、Sense 或 LanguageStage。
 - Phase 1 capability 只开放 Dialog、SQL 和 Store；没有 Shell、HTTP 或通用文件系统权限。
 

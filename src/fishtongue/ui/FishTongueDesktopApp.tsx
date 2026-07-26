@@ -75,6 +75,7 @@ type DialogKind =
   | "planned"
   | "search"
   | "lexurgy-help"
+  | "save-before-exit"
   | null;
 type AppMode = "welcome" | "workspace";
 
@@ -181,7 +182,13 @@ export default function FishTongueDesktopApp({
     if (closingRef.current) return;
     closingRef.current = true;
     try {
-      if (application.getSnapshot()) await application.closeProject();
+      const current = application.getSnapshot();
+      if (current?.session.requiresSaveAs) {
+        closingRef.current = false;
+        setDialog("save-before-exit");
+        return;
+      }
+      if (current) await application.closeProject();
       setSnapshot(null);
       await windowPort.close();
     } catch (reason) {
@@ -502,6 +509,20 @@ export default function FishTongueDesktopApp({
         kind={dialog}
         plannedTitle={plannedTitle}
         onClose={() => setDialog(null)}
+        onSaveBeforeExit={async () => {
+          const saved = await application.saveProjectAs();
+          if (!saved) return;
+          await application.closeProject();
+          setSnapshot(null);
+          setDialog(null);
+          await windowPort.close();
+        }}
+        onAbandonAndExit={async () => {
+          await application.abandonProject();
+          setSnapshot(null);
+          setDialog(null);
+          await windowPort.close();
+        }}
         onCreateProject={async (name) => {
           const next = await application.createProject(name);
           if (!next) {
@@ -1167,6 +1188,7 @@ function WelcomePage(props: {
 function AppDialog(props: {
   kind: DialogKind; plannedTitle: string; onClose: () => void;
   onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => Promise<void> | void;
+  onSaveBeforeExit: () => Promise<void>; onAbandonAndExit: () => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -1213,6 +1235,17 @@ function AppDialog(props: {
       setSubmitting(false);
     }
   };
+  const exitAction = async (action: () => Promise<void>) => {
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      await action();
+    } catch (reason) {
+      setSubmitError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return <div className={styles.dialogOverlay} role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget) props.onClose();}}>
     <div
       ref={dialogRef}
@@ -1245,13 +1278,26 @@ function AppDialog(props: {
         }
       }}
     >
-      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.kind === "lexurgy-help" ? "Lexurgy 规则快速参考" : props.plannedTitle}</h2>
+      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.kind === "lexurgy-help" ? "Lexurgy 规则快速参考" : props.kind === "save-before-exit" ? "保存项目后退出" : props.plannedTitle}</h2>
         <p>{props.kind === "planned"
           ? "此能力只保留入口，不会在本轮执行。"
           : props.kind === "lexurgy-help"
             ? "离线查看常用语法；完整规则仍以引擎验证结果为准。"
+            : props.kind === "save-before-exit"
+              ? "恢复或导入的项目不能自动覆盖原文件。请选择如何退出。"
             : "设计预览与真实项目能力保持清楚边界。"}</p></div><button aria-label="关闭" onClick={props.onClose}><Cross2Icon aria-hidden="true" /></button></div>
       {props.kind === "planned" ? <div className={styles.dialogBody}><div className={styles.plannedIllustration}><LayersIcon aria-hidden="true" /></div><p>页面结构和入口已经完成，正式数据、算法或运行环境将在对应功能阶段接入。</p></div>
+      : props.kind === "save-before-exit" ? <>
+          <div className={styles.dialogBody}>
+            <p>“另存为并退出”会保留当前内容；“放弃恢复并退出”只删除临时工作区，不删除原项目文件。</p>
+          </div>
+          {submitError && <p className={styles.dialogError} role="alert">{submitError}</p>}
+          <div className={styles.dialogFooter}>
+            <button type="button" disabled={submitting} onClick={props.onClose}>取消</button>
+            <button type="button" className={styles.dangerButton} disabled={submitting} onClick={() => void exitAction(props.onAbandonAndExit)}>放弃恢复并退出</button>
+            <button type="button" className={styles.primaryButton} disabled={submitting} onClick={() => void exitAction(props.onSaveBeforeExit)}>{submitting ? "处理中…" : "另存为并退出"}</button>
+          </div>
+        </>
       : props.kind === "lexurgy-help" ? <div className={styles.dialogBody}>
           <p>这份参考随 FishTongue 安装，可在断网时使用。规则按从上到下的顺序执行。</p>
           <div className={styles.commandResults}>

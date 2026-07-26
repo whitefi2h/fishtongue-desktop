@@ -24,6 +24,7 @@ export interface ProjectApplication {
   saveProject(): Promise<ProjectSnapshot>;
   saveProjectAs(): Promise<ProjectSnapshot | null>;
   closeProject(): Promise<void>;
+  abandonProject(): Promise<void>;
   recoverProject(): Promise<ProjectSnapshot>;
   discardRecovery(): Promise<void>;
   inspectRecovery(): Promise<RecoveryCandidate | null>;
