@@ -81,6 +81,8 @@ SQLite、文件系统、网络、系统进程或秘密；任何修改先产生�
 - Phase 1.5 的谱系、演化、开发者工具等 P1 项必须明确区分“真实能力”和“可交互原型”。
 - Phase 2 已扩展 `SoundChangeEngine` 并新增独立 `InflectionEngine` Port；
   `TauriLexurgyEngineAdapter` 是唯一可调用引擎 Command 的前端适配器。
+- Sidecar/IPC 返回值属于不可信边界数据。Rust Command 和前端 Adapter 必须在交给
+  Service/UI 前补齐可选集合并校验形状；UI 不得直接假设外部响应中的空数组或空对象存在。
 - Schema v2 新增 `inflection_systems` 和 `inflection_test_cases`。规则与测试输入
   持久化，生成结果不持久化；v1 项目只在活动工作区迁移，保存前仍走备份保护。
 - 真实项目的 Evolution 和“形态学 → 屈折系统”可以启动引擎；设计原型模式不得

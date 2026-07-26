@@ -684,7 +684,35 @@ fn run_sound_change(
         kind: "completed",
         message: "音变预览完成。".into(),
     });
-    Ok(result)
+    Ok(normalize_sound_change_result(result))
+}
+
+fn normalize_sound_change_result(mut result: Value) -> Value {
+    let Some(fields) = result.as_object_mut() else {
+        return json!({
+            "ruleNames": [],
+            "outputWords": [],
+            "intermediateWords": {},
+            "traces": {},
+            "errors": []
+        });
+    };
+    fields
+        .entry("ruleNames")
+        .or_insert_with(|| json!([]));
+    fields
+        .entry("outputWords")
+        .or_insert_with(|| json!([]));
+    fields
+        .entry("intermediateWords")
+        .or_insert_with(|| json!({}));
+    fields
+        .entry("traces")
+        .or_insert_with(|| json!({}));
+    fields
+        .entry("errors")
+        .or_insert_with(|| json!([]));
+    result
 }
 
 #[tauri::command]
@@ -757,6 +785,19 @@ mod tests {
             absolute_job_url("http://127.0.0.1:49152", "/scv1/poll/test"),
             "http://127.0.0.1:49152/scv1/poll/test"
         );
+    }
+
+    #[test]
+    fn sound_change_results_fill_optional_collections_before_ipc() {
+        let result = normalize_sound_change_result(json!({
+            "ruleNames": ["Raise"],
+            "outputWords": ["eme"],
+            "traces": { "ama": [{ "rule": "Raise", "output": "eme" }] }
+        }));
+        assert_eq!(result["ruleNames"], json!(["Raise"]));
+        assert_eq!(result["outputWords"], json!(["eme"]));
+        assert_eq!(result["intermediateWords"], json!({}));
+        assert_eq!(result["errors"], json!([]));
     }
 
     #[cfg(windows)]

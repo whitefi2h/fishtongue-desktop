@@ -40,7 +40,11 @@ export default class TauriLexurgyEngineAdapter
   ): Promise<SoundChangeRunResult> {
     const events = new Channel<EngineProgressEvent>();
     events.onmessage = onEvent;
-    return cancellable(command("lexurgy_run", { input, events }), signal);
+    const result = await cancellable<unknown>(
+      command("lexurgy_run", { input, events }),
+      signal
+    );
+    return normalizeSoundChangeRunResult(result);
   }
 
   inflect(
@@ -56,6 +60,66 @@ export default class TauriLexurgyEngineAdapter
     };
     return cancellable(command("lexurgy_inflect", { input: request }), signal);
   }
+}
+
+export function normalizeSoundChangeRunResult(
+  raw: unknown
+): SoundChangeRunResult {
+  const result = isRecord(raw) ? raw : {};
+  return {
+    ruleNames: stringArray(result.ruleNames),
+    outputWords: stringArray(result.outputWords),
+    intermediateWords: stringArrayRecord(result.intermediateWords),
+    traces: traceRecord(result.traces),
+    errors: Array.isArray(result.errors)
+      ? result.errors
+          .filter(isRecord)
+          .map((error) => ({
+            message: String(error.message ?? "Lexurgy 无法处理这个单词。"),
+            rule: optionalString(error.rule),
+            originalWord: optionalString(error.originalWord),
+            currentWord: optionalString(error.currentWord),
+          }))
+      : [],
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function stringArrayRecord(value: unknown): Record<string, string[]> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([key, items]) => [key, stringArray(items)])
+  );
+}
+
+function traceRecord(
+  value: unknown
+): Record<string, Array<{ rule: string; output: string }>> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([word, trace]) => [
+      word,
+      Array.isArray(trace)
+        ? trace
+            .filter(isRecord)
+            .map((step) => ({
+              rule: String(step.rule ?? ""),
+              output: String(step.output ?? ""),
+            }))
+        : [],
+    ])
+  );
+}
+
+function optionalString(value: unknown): string | undefined {
+  return value == null ? undefined : String(value);
 }
 
 function serializeRules(rules: unknown): unknown {
