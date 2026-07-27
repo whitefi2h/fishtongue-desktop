@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 3;
+pub const DATABASE_SCHEMA_VERSION: u32 = 4;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -18,9 +18,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 3,
             description: "create_phase_3_lexicon_wordgen_schema",
             sql: include_str!("../migrations/0003_phase_3_lexicon_wordgen.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "repair_phase_3_acceptance_workflows",
+            sql: include_str!("../migrations/0004_phase_3_acceptance_fixes.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -46,6 +52,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply schema v3");
+        sqlx::raw_sql(include_str!("../migrations/0004_phase_3_acceptance_fixes.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 3 acceptance fixes");
         connection
     }
 
@@ -221,6 +231,27 @@ mod tests {
             .unwrap()
             .get("count");
         assert_eq!(count, 0);
+        let candidate_status: String =
+            sqlx::query("SELECT status FROM generation_candidates WHERE id = 'c'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("status");
+        assert_eq!(candidate_status, "pending");
+        let batch_status: String =
+            sqlx::query("SELECT status FROM generation_batches WHERE id = 'b'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("status");
+        assert_eq!(batch_status, "undone");
+        let review_deleted_at: Option<String> =
+            sqlx::query("SELECT review_deleted_at FROM generation_batches WHERE id = 'b'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("review_deleted_at");
+        assert_eq!(review_deleted_at, None);
     }
 
     #[tokio::test]

@@ -107,6 +107,7 @@ class TestApplication implements ProjectApplication {
   async createGenerationBatch() { this.writes += 1; }
   async saveGenerationCandidate() { this.writes += 1; }
   async commitGenerationBatch() { this.writes += 1; }
+  async dismissGenerationBatch() { this.writes += 1; }
   async listLexiconBatchOperations() { return []; }
   async undoLexiconBatchOperation() { this.writes += 1; }
   async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
@@ -157,11 +158,12 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("[aria-label='工作区导航']").contains("button", "词典").click();
 
     cy.contains("当前语言还没有词条").should("be.visible");
+    cy.get("button[form='lexeme-editor-form']").should("be.visible");
     cy.get("input[name='lexeme-romanized']").should("be.enabled").type("ama");
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
     cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
-    cy.contains("button", "保存词条").click();
+    cy.get("button[form='lexeme-editor-form']").click();
 
     cy.contains("td", "ama").should("exist");
     cy.contains("td", "母亲").should("exist");
@@ -172,6 +174,12 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
         "母亲",
         "女性长辈",
       ]);
+    });
+
+    cy.get("textarea[name='lexeme-notes']").type("人工修改");
+    cy.get("button[form='lexeme-editor-form']").should("be.visible").click();
+    cy.wrap(null).then(() => {
+      expect(app.lexemes[0].notes).to.equal("人工修改");
     });
   });
 

@@ -77,6 +77,7 @@ export interface GenerationBatchRepository {
   create(batch: GenerationBatch): Promise<void>;
   saveCandidate(batchId: string, candidate: GenerationCandidate): Promise<void>;
   commit(batchId: string, operationId: string, committedAt: string): Promise<void>;
+  dismiss(batchId: string, dismissedAt: string): Promise<void>;
   listOperations(languageId: string): Promise<LexiconBatchOperation[]>;
   undo(operationId: string, undoneAt: string): Promise<void>;
 }

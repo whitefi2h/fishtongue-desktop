@@ -250,9 +250,13 @@ export default function LexiconWorkspace({
     <aside className={styles.lexemeDetail}>
       <div className={styles.paneHeader}>
         <span><strong>{draft.id ? draft.romanized || "未命名词条" : "新建词条"}</strong><small>{draft.id ? "编辑正式项目数据" : "至少填写一个词义"}</small></span>
-        <button aria-label="更多词条操作" disabled><DotsHorizontalIcon aria-hidden="true" /></button>
+        <span className={styles.lexemeHeaderActions}>
+          <button aria-label="更多词条操作" disabled><DotsHorizontalIcon aria-hidden="true" /></button>
+          <button className={styles.primaryButton} type="submit" form="lexeme-editor-form" disabled={saving}>{saving ? "保存中…" : "保存"}</button>
+        </span>
       </div>
-      <form className={styles.lexemeForm} onSubmit={(event) => void save(event)}>
+      <form id="lexeme-editor-form" className={styles.lexemeForm} onSubmit={(event) => void save(event)}>
+        <div className={styles.lexemeFormFields}>
         <label><span>词形</span><input name="lexeme-romanized" autoComplete="off" value={draft.romanized} onChange={(event) => setDraft((value) => ({ ...value, romanized: event.target.value }))} /></label>
         <label><span>IPA</span><input name="lexeme-ipa" autoComplete="off" value={draft.ipa} onChange={(event) => setDraft((value) => ({ ...value, ipa: event.target.value }))} placeholder="/a.ka/" /></label>
         <label><span>词性</span><input name="lexeme-part-of-speech" autoComplete="off" value={draft.partOfSpeech} onChange={(event) => setDraft((value) => ({ ...value, partOfSpeech: event.target.value }))} /></label>
@@ -290,6 +294,7 @@ export default function LexiconWorkspace({
           </div>
         </fieldset>
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}
+        </div>
         <div className={styles.lexemeFormActions}>
           <button type="button" onClick={startCreating}>清空</button>
           {draft.id && <button type="button" onClick={() => void remove()} disabled={saving}>删除</button>}

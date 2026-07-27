@@ -55,6 +55,7 @@ export interface ProjectApplication {
   createGenerationBatch(batch: GenerationBatch): Promise<void>;
   saveGenerationCandidate(batchId: string, candidate: GenerationCandidate): Promise<void>;
   commitGenerationBatch(batchId: string): Promise<void>;
+  dismissGenerationBatch(batchId: string): Promise<void>;
   listLexiconBatchOperations(languageId: string): Promise<LexiconBatchOperation[]>;
   undoLexiconBatchOperation(operationId: string): Promise<void>;
   getEvolution(languageId: string): Promise<Evolution>;

@@ -377,6 +377,14 @@ export default class ProjectSessionService implements ProjectApplication {
     await this.changed(this.requireSnapshot());
   }
 
+  async dismissGenerationBatch(batchId: string): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    await this.generationBatches.dismiss(batchId, new Date().toISOString());
+    await this.changed(this.requireSnapshot());
+  }
+
   listLexiconBatchOperations(languageId: string): Promise<LexiconBatchOperation[]> {
     this.requireSnapshot();
     return this.generationBatches.listOperations(languageId);

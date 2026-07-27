@@ -1,6 +1,6 @@
 [package]
 name = "fishtongue"
-version = "0.3.0-phase.3"
+version = "0.3.0-phase.3.1"
 description = "A local-first conlang creation desktop application"
 authors = ["FishTongue contributors"]
 license = "GPL-3.0-only"

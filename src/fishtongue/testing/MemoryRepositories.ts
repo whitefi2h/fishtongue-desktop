@@ -183,9 +183,10 @@ export class MemoryConceptListRepository implements ConceptListRepository {
 export class MemoryGenerationBatchRepository implements GenerationBatchRepository {
   private readonly values = new Map<string, GenerationBatch>();
   private readonly operations = new Map<string, LexiconBatchOperation>();
+  private readonly dismissed = new Set<string>();
   async list(languageId: string): Promise<GenerationBatch[]> {
     return [...this.values.values()]
-      .filter((value) => value.languageId === languageId)
+      .filter((value) => value.languageId === languageId && !this.dismissed.has(value.id))
       .map(clone);
   }
   async get(id: string): Promise<GenerationBatch | null> {
@@ -218,6 +219,9 @@ export class MemoryGenerationBatchRepository implements GenerationBatchRepositor
       createdAt: committedAt,
     });
   }
+  async dismiss(batchId: string): Promise<void> {
+    this.dismissed.add(batchId);
+  }
   async listOperations(languageId: string): Promise<LexiconBatchOperation[]> {
     return [...this.operations.values()]
       .filter((value) => value.languageId === languageId)
@@ -229,9 +233,10 @@ export class MemoryGenerationBatchRepository implements GenerationBatchRepositor
     operation.undoneAt = undoneAt;
     const batch = this.values.get(operation.batchId);
     if (batch) {
+      this.dismissed.delete(batch.id);
       batch.status = "undone";
       batch.candidates = batch.candidates.map((candidate) =>
-        candidate.status === "committed" ? { ...candidate, status: "accepted" } : candidate
+        candidate.status === "committed" ? { ...candidate, status: "pending" } : candidate
       );
     }
   }

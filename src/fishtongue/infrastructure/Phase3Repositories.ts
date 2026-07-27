@@ -248,7 +248,8 @@ export class SqliteGenerationBatchRepository implements GenerationBatchRepositor
   async list(languageId: string): Promise<GenerationBatch[]> {
     const rows = await this.database.select<BatchRow>(
       `SELECT * FROM generation_batches
-       WHERE language_id = $1 ORDER BY created_at DESC`,
+       WHERE language_id = $1 AND review_deleted_at IS NULL
+       ORDER BY created_at DESC`,
       [languageId]
     );
     return this.attachCandidates(rows);
@@ -295,6 +296,13 @@ export class SqliteGenerationBatchRepository implements GenerationBatchRepositor
     await this.database.execute(
       "INSERT INTO generation_commit_commands VALUES ($1,$2,$3)",
       [operationId, batchId, committedAt]
+    );
+  }
+
+  async dismiss(batchId: string, dismissedAt: string): Promise<void> {
+    await this.database.execute(
+      "UPDATE generation_batches SET review_deleted_at = $1 WHERE id = $2",
+      [dismissedAt, batchId]
     );
   }
 

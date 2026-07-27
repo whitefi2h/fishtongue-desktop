@@ -3,6 +3,7 @@
 ## Phase 3 已实现边界
 
 - Schema v3 扩展 `lexemes`，并新增语素、造词配置、概念表、审核批次、候选和批量操作记录。
+  数据库迁移 v4 修复候选撤销恢复和候选列表软删除，不引入新的 Phase 4 领域能力。
 - `WordGenerationEngine` 与音变、屈折 Port 分离；唯一桌面 Adapter 复用同一个 Lexurgy
   Sidecar，协议固定为 v2。
 - 造词算法固定为 `splitmix64-v1`，配置固定为 `wordgen-profile-v1`；种子以十进制字符串

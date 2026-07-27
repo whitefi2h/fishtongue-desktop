@@ -28,6 +28,18 @@ for (const required of [
 ]) {
   if (!migration.includes(required)) failures.push(`Schema v3 migration is missing ${required}`);
 }
+const acceptanceFix = read("src-tauri/migrations/0004_phase_3_acceptance_fixes.sql");
+for (const required of [
+  "review_deleted_at",
+  "SET status = 'pending'",
+  "prepare_generation_recommit",
+]) {
+  if (!acceptanceFix.includes(required)) failures.push(`Phase 3 acceptance migration is missing ${required}`);
+}
+const workspace = read("src/fishtongue/ui/Phase3Workspaces.tsx");
+for (const required of ["取消生成", "全部接受", "提交已接受项", "删除候选列表"]) {
+  if (!workspace.includes(required)) failures.push(`Phase 3 workspace is missing ${required}`);
+}
 
 const lock = JSON.parse(read("engine/engine-lock.json"));
 if (lock.protocolVersion !== 2) failures.push("Engine protocol is not locked to v2");

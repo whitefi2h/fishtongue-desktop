@@ -17,6 +17,10 @@ npm run verify:phase3
 Phase 3 尚未完成外部人工验收，因此不得创建 `phase-3.0.1` 结项标签。Phase 4/5 的
 LLM、词源、历史阶段和谱系能力仍未实现。
 
+人工验收提出的 IPA 音位选点、演化词典筛选、候选冲突处理和面向语言学新手的
+离线 `⍰` 帮助要求，统一记录在
+[`docs/product-follow-up-requirements.md`](docs/product-follow-up-requirements.md)。
+
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
 > 当前状态：Phase 0、Phase 1、Phase 1.5 和 Phase 2 已通过验收。Phase 2 已交付

@@ -15,7 +15,7 @@ import {
 import { InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import { CheckIcon, Cross2Icon, PlusIcon, ReloadIcon } from "@radix-ui/react-icons";
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 type MorphologyTab = "morphemes" | "derivation" | "inflection";
@@ -277,6 +277,7 @@ function ProfileAndGenerate({
   const [count, setCount] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const generationAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     if (current) {
       setName(current.name);
@@ -338,6 +339,8 @@ function ProfileAndGenerate({
   };
   const generate = async () => {
     if (!service) { setError("造词引擎尚未连接。"); return; }
+    const controller = new AbortController();
+    generationAbort.current = controller;
     setBusy(true);
     try {
       const now = new Date().toISOString();
@@ -349,7 +352,15 @@ function ProfileAndGenerate({
       const concepts = listKind === "custom"
         ? storedList?.concepts ?? custom.split(/\r?\n/).map((gloss) => gloss.trim()).filter(Boolean).map((gloss, position) => ({ id: uuid(), conceptKey: `custom:${position + 1}`, gloss, position }))
         : builtInConcepts(listKind);
-      const batch = await service.generate(languageId, profile, seed, concepts, count, lexemes);
+      const batch = await service.generate(
+        languageId,
+        profile,
+        seed,
+        concepts,
+        count,
+        lexemes,
+        controller.signal
+      );
       await application.createGenerationBatch(batch);
       await reload();
       notifyProject(application, onProjectChanged);
@@ -357,7 +368,10 @@ function ProfileAndGenerate({
       setError("");
       onReview();
     } catch (reason) { setError(messageOf(reason)); }
-    finally { setBusy(false); }
+    finally {
+      if (generationAbort.current === controller) generationAbort.current = null;
+      setBusy(false);
+    }
   };
   const saveCustomList = async () => {
     try {
@@ -427,7 +441,10 @@ function ProfileAndGenerate({
         <label><span>固定随机种子</span><input value={seed} inputMode="numeric" onChange={(event) => setSeed(event.target.value)} /></label>
         <label><span>每个概念的候选数</span><input type="number" min={1} max={10} value={count} onChange={(event) => setCount(Number(event.target.value))} /></label>
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}
-        <div className={styles.phase3Actions}><button className={styles.primaryButton} disabled={busy} onClick={() => void generate()}>{busy ? "生成中…" : "生成新审核批次"}</button></div>
+        <div className={styles.phase3Actions}>
+          {busy && <button onClick={() => generationAbort.current?.abort()}>取消生成</button>}
+          <button className={styles.primaryButton} disabled={busy} onClick={() => void generate()}>{busy ? "生成中…" : "生成新审核批次"}</button>
+        </div>
       </div>
     </section>
   </div>;
@@ -439,10 +456,11 @@ function CandidateReview({
   application: ProjectApplication; batches: GenerationBatch[]; reload: () => Promise<void>;
   onProjectChanged: (snapshot: ProjectSnapshot) => void; onStatus: (message: string) => void;
 }) {
-  const drafts = batches.filter((item) => item.status === "draft");
+  const reviewable = batches;
   const [batchId, setBatchId] = useState("");
   const [error, setError] = useState("");
-  const batch = drafts.find((item) => item.id === batchId) ?? drafts[0];
+  const batch = reviewable.find((item) => item.id === batchId) ?? reviewable[0];
+  const editable = batch?.status !== "committed";
   const update = async (candidateId: string, patch: Partial<GenerationBatch["candidates"][number]>) => {
     if (!batch) return;
     const candidate = batch.candidates.find((item) => item.id === candidateId);
@@ -463,27 +481,58 @@ function CandidateReview({
       setError("");
     } catch (reason) { setError(messageOf(reason)); }
   };
+  const acceptAll = async () => {
+    if (!batch || !editable) return;
+    try {
+      for (const candidate of batch.candidates) {
+        if (candidate.status !== "committed") {
+          await application.saveGenerationCandidate(batch.id, {
+            ...candidate,
+            status: "accepted",
+          });
+        }
+      }
+      await reload();
+      notifyProject(application, onProjectChanged);
+      setError("");
+    } catch (reason) { setError(messageOf(reason)); }
+  };
+  const dismiss = async () => {
+    if (!batch) return;
+    try {
+      await application.dismissGenerationBatch(batch.id);
+      setBatchId("");
+      await reload();
+      notifyProject(application, onProjectChanged);
+      onStatus("候选列表已移除；正式词条和撤销记录不受影响。");
+      setError("");
+    } catch (reason) { setError(messageOf(reason)); }
+  };
   if (!batch) return <div className={styles.emptyState}><div><CheckIcon /></div><h2>没有待审核批次</h2><p>生成或派生候选后，它们会先进入这里，不会自动写入词典。</p></div>;
   return <section className={styles.surfacePanel}>
-    <div className={styles.paneHeader}>
-      <select value={batch.id} onChange={(event) => setBatchId(event.target.value)}>{drafts.map((item) => <option key={item.id} value={item.id}>{item.type === "basic" ? "基础造词" : "批量派生"} · {new Date(item.createdAt).toLocaleString()} · {item.seed}</option>)}</select>
-      <button className={styles.primaryButton} disabled={!batch.candidates.some((item) => item.status === "accepted" && !item.conflicts.length)} onClick={() => void commit()}>提交已接受候选</button>
+    <div className={`${styles.paneHeader} ${styles.candidateReviewHeader}`}>
+      <select value={batch.id} onChange={(event) => setBatchId(event.target.value)}>{reviewable.map((item) => <option key={item.id} value={item.id}>{item.type === "basic" ? "基础造词" : "批量派生"} · {batchStatusLabel(item.status)} · {new Date(item.createdAt).toLocaleString()} · {item.seed}</option>)}</select>
+      <button disabled={!editable} onClick={() => void acceptAll()}>全部接受</button>
+      <button onClick={() => void dismiss()}>删除候选列表</button>
+      <button className={styles.primaryButton} disabled={!editable || !batch.candidates.some((item) => item.status === "accepted" && !item.conflicts.length)} onClick={() => void commit()}>提交已接受项</button>
     </div>
+    {batch.status === "committed" && <p className={styles.phase3Notice}>已提交项已经进入词典；未接受和拒绝项继续保留。撤销本次提交后，已提交项会恢复为待审核。</p>}
+    {batch.status === "undone" && <p className={styles.phase3Notice}>本批次已撤销，原已提交候选已经恢复为待审核，可以重新选择后提交。</p>}
     <div className={styles.phase3Review}>
       {batch.candidates.map((candidate) => <article key={candidate.id} data-status={candidate.status}>
         <div><strong>{candidate.gloss}</strong><small>{candidate.conflicts.map((conflict) => conflict.message).join("；") || "无冲突"}</small></div>
-        <input aria-label={`${candidate.gloss} 的候选词形`} value={candidate.romanized} onChange={(event) => void update(candidate.id, { romanized: event.target.value })} />
-        <input aria-label={`${candidate.gloss} 的词性`} placeholder="词性" value={candidate.partOfSpeech} onChange={(event) => void update(candidate.id, { partOfSpeech: event.target.value })} />
-        <CandidateButton status="accepted" current={candidate.status} onClick={() => void update(candidate.id, { status: "accepted" })} />
-        <CandidateButton status="rejected" current={candidate.status} onClick={() => void update(candidate.id, { status: "rejected" })} />
+        <input disabled={!editable || candidate.status === "committed"} aria-label={`${candidate.gloss} 的候选词形`} value={candidate.romanized} onChange={(event) => void update(candidate.id, { romanized: event.target.value })} />
+        <input disabled={!editable || candidate.status === "committed"} aria-label={`${candidate.gloss} 的词性`} placeholder="词性" value={candidate.partOfSpeech} onChange={(event) => void update(candidate.id, { partOfSpeech: event.target.value })} />
+        <CandidateButton disabled={!editable || candidate.status === "committed"} status="accepted" current={candidate.status} onClick={() => void update(candidate.id, { status: "accepted" })} />
+        <CandidateButton disabled={!editable || candidate.status === "committed"} status="rejected" current={candidate.status} onClick={() => void update(candidate.id, { status: "rejected" })} />
       </article>)}
     </div>
     {error && <p className={styles.engineError} role="alert">{error}</p>}
   </section>;
 }
 
-function CandidateButton({ status, current, onClick }: { status: CandidateStatus; current: CandidateStatus; onClick: () => void }) {
-  return <button aria-pressed={current === status} data-active={current === status} onClick={onClick}>
+function CandidateButton({ status, current, disabled, onClick }: { status: CandidateStatus; current: CandidateStatus; disabled?: boolean; onClick: () => void }) {
+  return <button disabled={disabled} aria-pressed={current === status} data-active={current === status} onClick={onClick}>
     {status === "accepted" ? <><CheckIcon />接受</> : <><Cross2Icon />拒绝</>}
   </button>;
 }
@@ -533,6 +582,12 @@ function notifyProject(application: ProjectApplication, callback: (snapshot: Pro
 
 function messageOf(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+function batchStatusLabel(status: GenerationBatch["status"]): string {
+  if (status === "committed") return "已提交";
+  if (status === "undone") return "已撤销";
+  return "待审核";
 }
 
 function formatCategories(config: WordGenerationConfig): string {
