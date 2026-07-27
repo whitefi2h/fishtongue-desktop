@@ -199,11 +199,6 @@ function DerivationPanel({
       ? [selectedMorpheme, ...filteredMorphemes]
       : filteredMorphemes;
   }, [filteredMorphemes, morphemeId, morphemes]);
-  const selectedLexemes = useMemo(() =>
-    selected
-      .map((id) => lexemes.find((lexeme) => lexeme.id === id))
-      .filter((lexeme): lexeme is Lexeme => Boolean(lexeme)),
-  [lexemes, selected]);
   const filteredLexemes = useMemo(() => {
     const query = sourceSearch.trim().toLocaleLowerCase();
     return query
@@ -213,9 +208,6 @@ function DerivationPanel({
         )
       : lexemes;
   }, [lexemes, sourceSearch]);
-  const visibleLexemes = useMemo(() =>
-    sourceSearch.trim() ? filteredLexemes : selectedLexemes,
-  [filteredLexemes, selectedLexemes, sourceSearch]);
   const create = async () => {
     const morpheme = morphemes.find((item) => item.id === morphemeId);
     if (!morpheme) return;
@@ -241,21 +233,10 @@ function DerivationPanel({
       <label className={styles.phase3Wide}><span>派生语素</span><select value={morphemeId} onChange={(event) => setMorphemeId(event.target.value)}>
         <option value="">请选择</option>{selectableMorphemes.map((item) => <option key={item.id} value={item.id}>{item.form} · {typeLabels[item.type]} · {item.meaning}</option>)}
       </select></label>
-      <section className={`${styles.phase3Wide} ${styles.morphemePickerPanel}`} aria-labelledby="derivation-source-heading">
-        <div className={styles.morphemePickerHeader}>
-          <strong id="derivation-source-heading">源词</strong>
-          <span>已选 {selected.length}</span>
-        </div>
-        <p className={styles.fieldHint}>默认只显示已选源词；搜索词形或释义后可继续加入候选。</p>
+      <fieldset className={styles.phase3Wide}><legend>源词（已选 {selected.length}）</legend>
         <label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索源词" autoComplete="off" value={sourceSearch} onChange={(event) => setSourceSearch(event.target.value)} placeholder="搜索词形或释义…" /></label>
-        <div className={styles.morphemeChoiceList}>{visibleLexemes.map((item) => <label key={item.id}>
-          <input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />
-          <span><strong>{item.romanized}</strong><small>{item.senses[0]?.definition || "无释义"}</small></span>
-        </label>)}
-        {!lexemes.length && <span>当前词典还没有可派生的词条。</span>}
-        {Boolean(lexemes.length) && !visibleLexemes.length && <span>{sourceSearch ? "没有匹配的源词。" : "尚未选择源词；可搜索后添加。"}</span>}
-        </div>
-      </section>
+        <div className={styles.phase3Checks}>{filteredLexemes.map((item) => <label key={item.id}><input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />{item.romanized} · {item.senses[0]?.definition}</label>)}</div>
+      </fieldset>
       {error && <p className={styles.lexemeError}>{error}</p>}
       <div className={styles.phase3Actions}><button className={styles.primaryButton} disabled={!morphemeId || !selected.length} onClick={() => void create()}>创建派生审核批次</button></div>
     </div>

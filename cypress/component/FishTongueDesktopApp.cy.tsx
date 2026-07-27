@@ -163,9 +163,9 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("button[form='lexeme-editor-form']").should("be.visible");
     cy.get("#lexeme-editor-form input[name='lexeme-romanized']").should("be.enabled");
     cy.get("#lexeme-editor-form input[name='lexeme-romanized']").type("ama");
-    cy.get("#lexeme-editor-form input[name='lexeme-part-of-speech']").should("be.enabled").clear();
-    cy.get("#lexeme-editor-form input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
-    cy.get("#lexeme-editor-form textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
+    cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
     cy.get("button[form='lexeme-editor-form']").click();
 
     cy.contains("td", "ama").should("exist");
@@ -179,7 +179,7 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
       ]);
     });
 
-    cy.get("#lexeme-editor-form textarea[name='lexeme-notes']").type("人工修改");
+    cy.get("textarea[name='lexeme-notes']").type("人工修改");
     cy.get("button[form='lexeme-editor-form']").should("be.visible").click();
     cy.wrap(null).then(() => {
       expect(app.lexemes[0].notes).to.equal("人工修改");
