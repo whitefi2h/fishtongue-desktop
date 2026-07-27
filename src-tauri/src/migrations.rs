@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 4;
+pub const DATABASE_SCHEMA_VERSION: u32 = 5;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -24,9 +24,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 4,
             description: "repair_phase_3_acceptance_workflows",
             sql: include_str!("../migrations/0004_phase_3_acceptance_fixes.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "improve_phase_3_review_workflow",
+            sql: include_str!("../migrations/0005_phase_3_review_workflow.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -56,6 +62,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply Phase 3 acceptance fixes");
+        sqlx::raw_sql(include_str!("../migrations/0005_phase_3_review_workflow.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 3 review workflow fixes");
         connection
     }
 
@@ -244,7 +254,7 @@ mod tests {
                 .await
                 .unwrap()
                 .get("status");
-        assert_eq!(batch_status, "undone");
+        assert_eq!(batch_status, "draft");
         let review_deleted_at: Option<String> =
             sqlx::query("SELECT review_deleted_at FROM generation_batches WHERE id = 'b'")
                 .fetch_one(&mut database)
@@ -285,5 +295,69 @@ mod tests {
             .unwrap()
             .get("notes");
         assert_eq!(notes, "edited");
+    }
+
+    #[tokio::test]
+    async fn phase_3_review_batch_supports_independent_partial_commits_and_undos() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'P', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', 'L', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO generation_batch_write_commands VALUES (
+              'b', 'l', 'basic', '{}', 'wordgen-profile-v1', 'splitmix64-v1',
+              '1', '[]', '2026-01-01T00:00:00Z',
+              '[
+                {"id":"c1","gloss":"fish","romanized":"na","status":"accepted","conflicts":[],"committedLexemeId":"x1","committedSenseId":"s1"},
+                {"id":"c2","gloss":"water","romanized":"mi","status":"pending","conflicts":[],"committedLexemeId":"x2","committedSenseId":"s2"}
+              ]'
+            );
+            INSERT INTO generation_commit_commands VALUES ('o1', 'b', '2026-01-02T00:00:00Z');
+            INSERT INTO generation_candidate_bulk_write_commands VALUES (
+              'bulk', 'b',
+              '[{"id":"c2","gloss":"water","romanized":"mi","status":"accepted","conflicts":[],"committedLexemeId":"x2","committedSenseId":"s2"}]'
+            );
+            INSERT INTO generation_commit_commands VALUES ('o2', 'b', '2026-01-03T00:00:00Z');
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let operation_count: i64 =
+            sqlx::query("SELECT count(*) AS count FROM lexicon_batch_operations WHERE batch_id = 'b'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        assert_eq!(operation_count, 2);
+
+        sqlx::query("INSERT INTO generation_undo_commands VALUES ('o1', ?1)")
+            .bind("2026-01-04T00:00:00Z")
+            .execute(&mut database)
+            .await
+            .unwrap();
+
+        let first_status: String =
+            sqlx::query("SELECT status FROM generation_candidates WHERE id = 'c1'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("status");
+        let second_status: String =
+            sqlx::query("SELECT status FROM generation_candidates WHERE id = 'c2'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("status");
+        assert_eq!(first_status, "pending");
+        assert_eq!(second_status, "committed");
+
+        let remaining_lexeme: String = sqlx::query("SELECT romanized FROM lexemes WHERE id = 'x2'")
+            .fetch_one(&mut database)
+            .await
+            .unwrap()
+            .get("romanized");
+        assert_eq!(remaining_lexeme, "mi");
     }
 }

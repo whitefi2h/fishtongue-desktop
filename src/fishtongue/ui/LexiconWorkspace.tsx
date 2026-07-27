@@ -51,6 +51,8 @@ export default function LexiconWorkspace({
   const [selectedId, setSelectedId] = useState<string>();
   const [draft, setDraft] = useState<LexemeDraft>(emptyDraft);
   const [search, setSearch] = useState("");
+  const [morphemeSearch, setMorphemeSearch] = useState("");
+  const [morphemeType, setMorphemeType] = useState<Morpheme["type"] | "all">("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -126,6 +128,15 @@ export default function LexiconWorkspace({
       )
     );
   }, [lexemes, search]);
+  const filteredMorphemes = useMemo(() => {
+    const query = morphemeSearch.trim().toLocaleLowerCase();
+    return morphemeLibrary.filter((morpheme) =>
+      (morphemeType === "all" || morpheme.type === morphemeType) &&
+      (!query ||
+        morpheme.form.toLocaleLowerCase().includes(query) ||
+        morpheme.meaning.toLocaleLowerCase().includes(query))
+    );
+  }, [morphemeLibrary, morphemeSearch, morphemeType]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -231,8 +242,21 @@ export default function LexiconWorkspace({
           ? <table className={styles.dataTable}>
               <thead><tr><th>词形</th><th>IPA</th><th>核心释义</th><th>词性</th><th>状态</th></tr></thead>
               <tbody>{filteredLexemes.map((lexeme) =>
-                <tr key={lexeme.id} data-active={lexeme.id === selectedId}>
-                  <td><button className={styles.textButton} aria-label={`选择词条 ${lexeme.romanized}`} onClick={() => selectLexeme(lexeme)}><strong>{lexeme.romanized}</strong></button></td>
+                <tr
+                  key={lexeme.id}
+                  data-active={lexeme.id === selectedId}
+                  data-selectable
+                  tabIndex={0}
+                  aria-label={`选择词条 ${lexeme.romanized}`}
+                  onClick={() => selectLexeme(lexeme)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectLexeme(lexeme);
+                    }
+                  }}
+                >
+                  <td><strong>{lexeme.romanized}</strong></td>
                   <td>{lexeme.ipa || "—"}</td>
                   <td>{lexeme.senses[0]?.definition}</td>
                   <td>{lexeme.partOfSpeech}</td>
@@ -266,6 +290,7 @@ export default function LexiconWorkspace({
         <label><span>备注</span><textarea name="lexeme-notes" value={draft.notes} onChange={(event) => setDraft((value) => ({ ...value, notes: event.target.value }))} placeholder="用法、资料状态或其他说明" /></label>
         <fieldset>
           <legend>形态组成（按选择顺序保存）</legend>
+          <p className={styles.fieldHint}>派生功能创建的词条会自动关联所用语素；手工词条可从语素库搜索并选择。</p>
           {draft.morphemes.length > 1 && <div className={styles.morphemeOrder}>
             {draft.morphemes.map((id, position) => {
               const item = morphemeLibrary.find((morpheme) => morpheme.id === id);
@@ -276,8 +301,34 @@ export default function LexiconWorkspace({
               </span>;
             })}
           </div>}
-          <div className={styles.phase3Checks}>
-            {morphemeLibrary.map((morpheme) => <label key={morpheme.id}>
+          <div className={styles.morphemePickerToolbar}>
+            <label className={styles.searchField}>
+              <MagnifyingGlassIcon aria-hidden="true" />
+              <input
+                aria-label="搜索语素"
+                autoComplete="off"
+                placeholder="搜索形式或含义…"
+                value={morphemeSearch}
+                onChange={(event) => setMorphemeSearch(event.target.value)}
+              />
+            </label>
+            <select
+              aria-label="按语素类型筛选"
+              value={morphemeType}
+              onChange={(event) => setMorphemeType(event.target.value as Morpheme["type"] | "all")}
+            >
+              <option value="all">全部类型</option>
+              <option value="root">词根</option>
+              <option value="prefix">前缀</option>
+              <option value="suffix">后缀</option>
+              <option value="infix">中缀</option>
+              <option value="circumfix">环缀</option>
+              <option value="clitic">黏着语素</option>
+              <option value="inflectional_ending">屈折词尾</option>
+            </select>
+          </div>
+          <div className={`${styles.phase3Checks} ${styles.morphemeChoices}`}>
+            {filteredMorphemes.map((morpheme) => <label key={morpheme.id}>
               <input
                 type="checkbox"
                 checked={draft.morphemes.includes(morpheme.id)}
@@ -291,6 +342,7 @@ export default function LexiconWorkspace({
               {morpheme.form} · {morpheme.meaning}
             </label>)}
             {!morphemeLibrary.length && <span>请先在“形态学 → 语素库”创建语素。</span>}
+            {Boolean(morphemeLibrary.length) && !filteredMorphemes.length && <span>没有匹配的语素。</span>}
           </div>
         </fieldset>
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}

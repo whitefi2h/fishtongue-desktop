@@ -106,6 +106,7 @@ class TestApplication implements ProjectApplication {
   async listGenerationBatches() { return []; }
   async createGenerationBatch() { this.writes += 1; }
   async saveGenerationCandidate() { this.writes += 1; }
+  async saveGenerationCandidates() { this.writes += 1; }
   async commitGenerationBatch() { this.writes += 1; }
   async dismissGenerationBatch() { this.writes += 1; }
   async listLexiconBatchOperations() { return []; }
@@ -158,8 +159,10 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("[aria-label='工作区导航']").contains("button", "词典").click();
 
     cy.contains("当前语言还没有词条").should("be.visible");
+    cy.get("[data-create-lexeme]").click();
     cy.get("button[form='lexeme-editor-form']").should("be.visible");
-    cy.get("input[name='lexeme-romanized']").should("be.enabled").type("ama");
+    cy.get("#lexeme-editor-form input[name='lexeme-romanized']").should("be.enabled");
+    cy.get("#lexeme-editor-form input[name='lexeme-romanized']").type("ama");
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
     cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
@@ -181,6 +184,11 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.wrap(null).then(() => {
       expect(app.lexemes[0].notes).to.equal("人工修改");
     });
+
+    cy.get("[data-create-lexeme]").click();
+    cy.get("input[name='lexeme-romanized']").should("have.value", "");
+    cy.contains("tr", "ama").find("td").eq(2).click();
+    cy.get("input[name='lexeme-romanized']").should("have.value", "ama");
   });
 
   it("closes the active project before the custom title-bar closes the window", () => {
@@ -281,11 +289,11 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
       cy.contains("工具").should("be.visible");
     });
     cy.get("[aria-label='最小化']").click().then(() => expect(windowPort.calls).to.include("minimize"));
-    cy.get("[data-tauri-drag-region]")
-      .trigger("mousedown", { button: 0, detail: 1 })
+    cy.get("[data-window-drag-region]")
+      .trigger("pointerdown", { button: 0, detail: 1 })
       .then(() => expect(windowPort.calls).to.include("drag"));
-    cy.get("[data-tauri-drag-region]")
-      .trigger("mousedown", { button: 0, detail: 2 })
+    cy.get("[data-window-drag-region]")
+      .trigger("pointerdown", { button: 0, detail: 2 })
       .then(() => expect(windowPort.calls).to.include("maximize"));
     cy.contains("浏览设计原型").click();
     cy.contains("语言概览").should("be.visible");

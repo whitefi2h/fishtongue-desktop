@@ -364,6 +364,25 @@ export default class ProjectSessionService implements ProjectApplication {
     await this.changed(this.requireSnapshot());
   }
 
+  async saveGenerationCandidates(
+    batchId: string,
+    values: GenerationCandidate[]
+  ): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    const editableIds = new Set(
+      batch.candidates
+        .filter((candidate) => candidate.status !== "committed")
+        .map((candidate) => candidate.id)
+    );
+    if (values.some((candidate) => !editableIds.has(candidate.id))) {
+      throw new Error("已提交候选不能再次修改。");
+    }
+    await this.generationBatches.saveCandidates(batchId, values);
+    await this.changed(this.requireSnapshot());
+  }
+
   async commitGenerationBatch(batchId: string): Promise<void> {
     this.requireSnapshot();
     const batch = await this.generationBatches.get(batchId);

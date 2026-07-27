@@ -14,7 +14,7 @@ import {
 } from "@/fishtongue/domain/models";
 import { InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
-import { CheckIcon, Cross2Icon, PlusIcon, ReloadIcon } from "@radix-ui/react-icons";
+import { CheckIcon, Cross2Icon, MagnifyingGlassIcon, PlusIcon, ReloadIcon } from "@radix-ui/react-icons";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
@@ -50,6 +50,7 @@ export function MorphemeWorkspace({
   live,
   onProjectChanged,
   onStatus,
+  onOpenCandidateReview,
 }: {
   application: ProjectApplication;
   inflectionService?: InflectionService;
@@ -57,6 +58,7 @@ export function MorphemeWorkspace({
   live: boolean;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
+  onOpenCandidateReview?: () => void;
 }) {
   const [tab, setTab] = useState<MorphologyTab>("morphemes");
   const [morphemes, setMorphemes] = useState<Morpheme[]>([]);
@@ -100,7 +102,7 @@ export function MorphemeWorkspace({
     {tab === "inflection"
       ? <InflectionWorkspace application={application} service={inflectionService} languageId={languageId} live={live} />
       : tab === "derivation"
-        ? <DerivationPanel application={application} languageId={languageId} morphemes={morphemes} onProjectChanged={onProjectChanged} onStatus={onStatus} />
+        ? <DerivationPanel application={application} languageId={languageId} morphemes={morphemes} onProjectChanged={onProjectChanged} onStatus={onStatus} onOpenCandidateReview={onOpenCandidateReview} />
         : <div className={styles.phase3Split}>
             <section className={styles.surfacePanel}>
               <div className={styles.paneHeader}><strong>{morphemes.length} 个语素</strong><button onClick={() => setSelected(newMorpheme(languageId))}><PlusIcon />新建</button></div>
@@ -165,18 +167,47 @@ function DerivationPanel({
   morphemes,
   onProjectChanged,
   onStatus,
+  onOpenCandidateReview,
 }: {
   application: ProjectApplication;
   languageId: string;
   morphemes: Morpheme[];
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
+  onOpenCandidateReview?: () => void;
 }) {
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
   const [morphemeId, setMorphemeId] = useState("");
+  const [morphemeSearch, setMorphemeSearch] = useState("");
+  const [morphemeType, setMorphemeType] = useState<MorphemeType | "all">("all");
+  const [sourceSearch, setSourceSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
   useEffect(() => { void application.listLexemes(languageId).then(setLexemes); }, [application, languageId]);
+  const filteredMorphemes = useMemo(() => {
+    const query = morphemeSearch.trim().toLocaleLowerCase();
+    return morphemes.filter((morpheme) =>
+      (morphemeType === "all" || morpheme.type === morphemeType) &&
+      (!query ||
+        morpheme.form.toLocaleLowerCase().includes(query) ||
+        morpheme.meaning.toLocaleLowerCase().includes(query))
+    );
+  }, [morphemeSearch, morphemeType, morphemes]);
+  const selectableMorphemes = useMemo(() => {
+    const selectedMorpheme = morphemes.find((morpheme) => morpheme.id === morphemeId);
+    return selectedMorpheme && !filteredMorphemes.some((morpheme) => morpheme.id === selectedMorpheme.id)
+      ? [selectedMorpheme, ...filteredMorphemes]
+      : filteredMorphemes;
+  }, [filteredMorphemes, morphemeId, morphemes]);
+  const filteredLexemes = useMemo(() => {
+    const query = sourceSearch.trim().toLocaleLowerCase();
+    return query
+      ? lexemes.filter((lexeme) =>
+          lexeme.romanized.toLocaleLowerCase().includes(query) ||
+          lexeme.senses.some((sense) => sense.definition.toLocaleLowerCase().includes(query))
+        )
+      : lexemes;
+  }, [lexemes, sourceSearch]);
   const create = async () => {
     const morpheme = morphemes.find((item) => item.id === morphemeId);
     if (!morpheme) return;
@@ -185,8 +216,9 @@ function DerivationPanel({
       const batch = service.derive(languageId, lexemes.filter((item) => selected.includes(item.id)), morpheme, morpheme.applicablePartOfSpeech, lexemes);
       await application.createGenerationBatch(batch);
       notifyProject(application, onProjectChanged);
-      onStatus("派生候选已创建，请到“词典 → 候选审核”确认后再提交。");
+      onStatus("派生候选已创建，正在打开候选审核。");
       setError("");
+      onOpenCandidateReview?.();
     } catch (reason) {
       setError(messageOf(reason));
     }
@@ -194,11 +226,16 @@ function DerivationPanel({
   return <section className={styles.surfacePanel}>
     <div className={styles.paneHeader}><strong>批量派生预览</strong><span>候选不会直接写入词典</span></div>
     <div className={styles.phase3Form}>
-      <label><span>派生语素</span><select value={morphemeId} onChange={(event) => setMorphemeId(event.target.value)}>
-        <option value="">请选择</option>{morphemes.map((item) => <option key={item.id} value={item.id}>{item.form} · {item.meaning}</option>)}
+      <label><span>搜索派生语素</span><input autoComplete="off" value={morphemeSearch} onChange={(event) => setMorphemeSearch(event.target.value)} placeholder="输入形式或含义…" /></label>
+      <label><span>语素类型</span><select value={morphemeType} onChange={(event) => setMorphemeType(event.target.value as MorphemeType | "all")}>
+        <option value="all">全部类型</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label>
+      <label className={styles.phase3Wide}><span>派生语素</span><select value={morphemeId} onChange={(event) => setMorphemeId(event.target.value)}>
+        <option value="">请选择</option>{selectableMorphemes.map((item) => <option key={item.id} value={item.id}>{item.form} · {typeLabels[item.type]} · {item.meaning}</option>)}
       </select></label>
       <fieldset className={styles.phase3Wide}><legend>源词（已选 {selected.length}）</legend>
-        <div className={styles.phase3Checks}>{lexemes.map((item) => <label key={item.id}><input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />{item.romanized} · {item.senses[0]?.definition}</label>)}</div>
+        <label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索源词" autoComplete="off" value={sourceSearch} onChange={(event) => setSourceSearch(event.target.value)} placeholder="搜索词形或释义…" /></label>
+        <div className={styles.phase3Checks}>{filteredLexemes.map((item) => <label key={item.id}><input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />{item.romanized} · {item.senses[0]?.definition}</label>)}</div>
       </fieldset>
       {error && <p className={styles.lexemeError}>{error}</p>}
       <div className={styles.phase3Actions}><button className={styles.primaryButton} disabled={!morphemeId || !selected.length} onClick={() => void create()}>创建派生审核批次</button></div>
@@ -213,6 +250,7 @@ export function WordGenerationWorkspace({
   dictionary,
   onProjectChanged,
   onStatus,
+  initialTab = "dictionary",
 }: {
   application: ProjectApplication;
   service?: WordGenerationService;
@@ -220,8 +258,9 @@ export function WordGenerationWorkspace({
   dictionary: ReactNode;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
+  initialTab?: LexiconTab;
 }) {
-  const [tab, setTab] = useState<LexiconTab>("dictionary");
+  const [tab, setTab] = useState<LexiconTab>(initialTab);
   const [profiles, setProfiles] = useState<WordGenerationProfile[]>([]);
   const [batches, setBatches] = useState<GenerationBatch[]>([]);
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
@@ -460,7 +499,9 @@ function CandidateReview({
   const [batchId, setBatchId] = useState("");
   const [error, setError] = useState("");
   const batch = reviewable.find((item) => item.id === batchId) ?? reviewable[0];
-  const editable = batch?.status !== "committed";
+  const editableCandidates = batch?.candidates.filter((candidate) => candidate.status !== "committed") ?? [];
+  const editable = editableCandidates.length > 0;
+  const allAccepted = editable && editableCandidates.every((candidate) => candidate.status === "accepted");
   const update = async (candidateId: string, patch: Partial<GenerationBatch["candidates"][number]>) => {
     if (!batch) return;
     const candidate = batch.candidates.find((item) => item.id === candidateId);
@@ -481,19 +522,19 @@ function CandidateReview({
       setError("");
     } catch (reason) { setError(messageOf(reason)); }
   };
-  const acceptAll = async () => {
+  const toggleAcceptAll = async () => {
     if (!batch || !editable) return;
     try {
-      for (const candidate of batch.candidates) {
-        if (candidate.status !== "committed") {
-          await application.saveGenerationCandidate(batch.id, {
-            ...candidate,
-            status: "accepted",
-          });
-        }
-      }
+      await application.saveGenerationCandidates(
+        batch.id,
+        editableCandidates.map((candidate) => ({
+          ...candidate,
+          status: allAccepted ? "pending" : "accepted",
+        }))
+      );
       await reload();
       notifyProject(application, onProjectChanged);
+      onStatus(allAccepted ? "已取消本批次的全部选择。" : "已接受所有尚未提交的候选。");
       setError("");
     } catch (reason) { setError(messageOf(reason)); }
   };
@@ -512,11 +553,11 @@ function CandidateReview({
   return <section className={styles.surfacePanel}>
     <div className={`${styles.paneHeader} ${styles.candidateReviewHeader}`}>
       <select value={batch.id} onChange={(event) => setBatchId(event.target.value)}>{reviewable.map((item) => <option key={item.id} value={item.id}>{item.type === "basic" ? "基础造词" : "批量派生"} · {batchStatusLabel(item.status)} · {new Date(item.createdAt).toLocaleString()} · {item.seed}</option>)}</select>
-      <button disabled={!editable} onClick={() => void acceptAll()}>全部接受</button>
+      <button disabled={!editable} onClick={() => void toggleAcceptAll()}>{allAccepted ? "取消全选" : "全部接受"}</button>
       <button onClick={() => void dismiss()}>删除候选列表</button>
-      <button className={styles.primaryButton} disabled={!editable || !batch.candidates.some((item) => item.status === "accepted" && !item.conflicts.length)} onClick={() => void commit()}>提交已接受项</button>
+      <button className={styles.primaryButton} disabled={!editable || !batch.candidates.some((item) => item.status === "accepted" && !item.conflicts.length)} onClick={() => void commit()}>提交本次已接受项</button>
     </div>
-    {batch.status === "committed" && <p className={styles.phase3Notice}>已提交项已经进入词典；未接受和拒绝项继续保留。撤销本次提交后，已提交项会恢复为待审核。</p>}
+    {batch.candidates.some((candidate) => candidate.status === "committed") && <p className={styles.phase3Notice}>已提交项已经进入词典；其余候选仍可继续审核并再次提交。每次提交都可在“批量记录”中单独撤销。</p>}
     {batch.status === "undone" && <p className={styles.phase3Notice}>本批次已撤销，原已提交候选已经恢复为待审核，可以重新选择后提交。</p>}
     <div className={styles.phase3Review}>
       {batch.candidates.map((candidate) => <article key={candidate.id} data-status={candidate.status}>

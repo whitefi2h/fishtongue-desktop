@@ -183,6 +183,7 @@ export class MemoryConceptListRepository implements ConceptListRepository {
 export class MemoryGenerationBatchRepository implements GenerationBatchRepository {
   private readonly values = new Map<string, GenerationBatch>();
   private readonly operations = new Map<string, LexiconBatchOperation>();
+  private readonly operationCandidates = new Map<string, string[]>();
   private readonly dismissed = new Set<string>();
   async list(languageId: string): Promise<GenerationBatch[]> {
     return [...this.values.values()]
@@ -203,14 +204,28 @@ export class MemoryGenerationBatchRepository implements GenerationBatchRepositor
       value.id === candidate.id ? clone(candidate) : value
     );
   }
+  async saveCandidates(batchId: string, candidates: GenerationCandidate[]): Promise<void> {
+    const batch = this.values.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    const replacements = new Map(candidates.map((candidate) => [candidate.id, clone(candidate)]));
+    batch.candidates = batch.candidates.map((candidate) =>
+      replacements.get(candidate.id) ?? candidate
+    );
+  }
   async commit(batchId: string, operationId: string, committedAt: string): Promise<void> {
     const batch = this.values.get(batchId);
     if (!batch) throw new Error("审核批次不存在。");
-    batch.status = "committed";
+    const committedIds = batch.candidates
+      .filter((candidate) => candidate.status === "accepted")
+      .map((candidate) => candidate.id);
     batch.committedAt = committedAt;
     batch.candidates = batch.candidates.map((candidate) =>
       candidate.status === "accepted" ? { ...candidate, status: "committed" } : candidate
     );
+    batch.status = batch.candidates.every((candidate) => candidate.status === "committed")
+      ? "committed"
+      : "draft";
+    this.operationCandidates.set(operationId, committedIds);
     this.operations.set(operationId, {
       id: operationId,
       languageId: batch.languageId,
@@ -234,10 +249,11 @@ export class MemoryGenerationBatchRepository implements GenerationBatchRepositor
     const batch = this.values.get(operation.batchId);
     if (batch) {
       this.dismissed.delete(batch.id);
-      batch.status = "undone";
+      const candidateIds = new Set(this.operationCandidates.get(operationId) ?? []);
       batch.candidates = batch.candidates.map((candidate) =>
-        candidate.status === "committed" ? { ...candidate, status: "pending" } : candidate
+        candidateIds.has(candidate.id) ? { ...candidate, status: "pending" } : candidate
       );
+      batch.status = "draft";
     }
   }
 }

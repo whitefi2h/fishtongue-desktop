@@ -6,8 +6,8 @@ import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phas
 
 const projectSession: ProjectSession = {
   manifest: {
-    formatVersion: 1, databaseSchemaVersion: 4, projectId: "p1", name: "测试项目",
-    createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", appVersion: "0.3.0-phase.3.1",
+    formatVersion: 1, databaseSchemaVersion: 5, projectId: "p1", name: "测试项目",
+    createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", appVersion: "0.3.0-phase.3.2",
   },
   sourcePath: "C:\\test.fishtongue", requiresSaveAs: false, recovered: false,
 };
@@ -36,14 +36,21 @@ function fakeApplication() {
       const batch = state.batches.find((item) => item.id === batchId)!;
       batch.candidates = batch.candidates.map((item) => item.id === candidate.id ? structuredClone(candidate) : item);
     },
+    saveGenerationCandidates: async (batchId: string, candidates: GenerationBatch["candidates"]) => {
+      const batch = state.batches.find((item) => item.id === batchId)!;
+      const replacements = new Map(candidates.map((candidate) => [candidate.id, structuredClone(candidate)]));
+      batch.candidates = batch.candidates.map((candidate) => replacements.get(candidate.id) ?? candidate);
+    },
     commitGenerationBatch: async (batchId: string) => {
       const batch = state.batches.find((item) => item.id === batchId)!;
-      batch.status = "committed";
       batch.candidates = batch.candidates.map((candidate) =>
         candidate.status === "accepted"
           ? { ...candidate, status: "committed" }
           : candidate
       );
+      batch.status = batch.candidates.every((candidate) => candidate.status === "committed")
+        ? "committed"
+        : "draft";
       state.committed += 1;
     },
     dismissGenerationBatch: async (batchId: string) => {
@@ -125,13 +132,20 @@ describe("Phase 3 workspaces", () => {
     cy.contains("生成新审核批次").click();
     cy.contains("候选审核").click();
     cy.get("button[aria-pressed]").contains("接受").first().click();
-    cy.contains("button", "提交已接受项").click();
+    cy.contains("button", "提交本次已接受项").click();
     cy.contains("已提交项已经进入词典").should("be.visible");
     cy.contains("button", "删除候选列表").should("be.visible");
     cy.wrap(null).then(() => {
       expect(state.committed).to.equal(1);
       expect(state.batches[0].candidates.some((candidate) => candidate.status === "pending")).to.equal(true);
     });
+
+    cy.contains("button", "全部接受").click();
+    cy.contains("button", "取消全选").should("be.visible").click();
+    cy.contains("button", "全部接受").should("be.visible");
+    cy.contains("button:not(:disabled)", "接受").first().click();
+    cy.contains("button", "提交本次已接受项").click();
+    cy.wrap(null).then(() => expect(state.committed).to.equal(2));
   });
 
   it("cancels a long generation without creating a partial review batch", () => {

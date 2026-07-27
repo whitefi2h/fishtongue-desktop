@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const resources = join(root, "src-tauri", "target", "release", "resources", "lexurgy");
-const installer = join(root, "src-tauri", "target", "release", "bundle", "nsis", "FishTongue_0.3.0-phase.3.1_x64-setup.exe");
+const installer = join(root, "src-tauri", "target", "release", "bundle", "nsis", "FishTongue_0.3.0-phase.3.2_x64-setup.exe");
 const lock = JSON.parse(readFileSync(join(root, "engine", "engine-lock.json"), "utf8"));
 const required = [
   "fishtongue-engine.jar",

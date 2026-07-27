@@ -36,8 +36,16 @@ for (const required of [
 ]) {
   if (!acceptanceFix.includes(required)) failures.push(`Phase 3 acceptance migration is missing ${required}`);
 }
+const reviewFix = read("src-tauri/migrations/0005_phase_3_review_workflow.sql");
+for (const required of [
+  "generation_candidate_bulk_write_commands",
+  "idx_batch_operations_batch",
+  "status = 'draft'",
+]) {
+  if (!reviewFix.includes(required)) failures.push(`Phase 3 review migration is missing ${required}`);
+}
 const workspace = read("src/fishtongue/ui/Phase3Workspaces.tsx");
-for (const required of ["取消生成", "全部接受", "提交已接受项", "删除候选列表"]) {
+for (const required of ["取消生成", "全部接受", "取消全选", "提交本次已接受项", "删除候选列表"]) {
   if (!workspace.includes(required)) failures.push(`Phase 3 workspace is missing ${required}`);
 }
 

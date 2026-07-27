@@ -171,6 +171,7 @@ export default function FishTongueDesktopApp({
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
   const [lexiconCreateRequest, setLexiconCreateRequest] = useState(0);
+  const [lexiconEntryTab, setLexiconEntryTab] = useState<"dictionary" | "review">("dictionary");
   const closingRef = useRef(false);
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
@@ -335,8 +336,9 @@ export default function FishTongueDesktopApp({
     }
   };
 
-  const navigate = (next: WorkspaceRoute) => {
+  const navigate = (next: WorkspaceRoute, lexiconTab: "dictionary" | "review" = "dictionary") => {
     setNavOverlayOpen(false);
+    if (next === "lexicon") setLexiconEntryTab(lexiconTab);
     if (next === route) return;
     setRouteHistory((history) => [...history.slice(-19), route]);
     setRoute(next);
@@ -500,6 +502,8 @@ export default function FishTongueDesktopApp({
                 inflectionService={inflectionService}
                 wordGenerationService={wordGenerationService}
                 lexiconCreateRequest={lexiconCreateRequest}
+                lexiconEntryTab={lexiconEntryTab}
+                onOpenCandidateReview={() => navigate("lexicon", "review")}
                 onProjectChanged={(next) => setSnapshot({ ...next })}
                 onStatus={setMessage}
                 onCreateLanguage={() => setDialog("new-language")}
@@ -569,9 +573,10 @@ function TitleBar({ projectName, pageTitle, dirty, state, windowPort, onClose }:
     <div className={styles.brand} translate="no"><span className={styles.brandMark}>F</span><strong>FishTongue</strong></div>
     <div
       className={styles.dragRegion}
-      data-tauri-drag-region
-      onMouseDown={(event) => {
+      data-window-drag-region
+      onPointerDown={(event) => {
         if (event.button !== 0) return;
+        event.preventDefault();
         if (event.detail === 2) {
           void windowPort.toggleMaximize();
           return;
@@ -903,6 +908,8 @@ function PageContent(props: {
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
   lexiconCreateRequest: number;
+  lexiconEntryTab: "dictionary" | "review";
+  onOpenCandidateReview: () => void;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
   onCreateLanguage: () => void;
@@ -925,7 +932,7 @@ function PageContent(props: {
     case "dialects": return <DialectsPage />;
     case "phonology": return <PhonologyPage />;
     case "morphology": return props.snapshot
-      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} />
+      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} />
       : <MorphologyPage />;
     case "lexicon": return props.snapshot
       ? <WordGenerationWorkspace
@@ -934,6 +941,7 @@ function PageContent(props: {
           languageId={props.language.id}
           onProjectChanged={props.onProjectChanged}
           onStatus={props.onStatus}
+          initialTab={props.lexiconEntryTab}
           dictionary={<LexiconWorkspace
             application={props.application}
             languageId={props.language.id}

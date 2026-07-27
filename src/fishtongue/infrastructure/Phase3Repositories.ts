@@ -292,6 +292,18 @@ export class SqliteGenerationBatchRepository implements GenerationBatchRepositor
     );
   }
 
+  async saveCandidates(
+    batchId: string,
+    values: GenerationCandidate[]
+  ): Promise<void> {
+    if (!values.length) return;
+    await this.database.execute(
+      `INSERT INTO generation_candidate_bulk_write_commands
+       (id, batch_id, candidates_json) VALUES ($1,$2,$3)`,
+      [crypto.randomUUID(), batchId, JSON.stringify(values)]
+    );
+  }
+
   async commit(batchId: string, operationId: string, committedAt: string): Promise<void> {
     await this.database.execute(
       "INSERT INTO generation_commit_commands VALUES ($1,$2,$3)",
