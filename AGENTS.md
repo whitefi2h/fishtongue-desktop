@@ -1,20 +1,22 @@
 # FishTongue Agent Instructions
 
-## Phase 3 当前状态
+## Phase 4 当前状态
 
-- Phase 3 实现已完成，外部 Windows 人工验收尚未完成；不得提前创建结项标签。
+- Phase 3 已通过外部 Windows 人工验收并结项；Phase 4 正在实现多模型 AI 助手。
 - 正式词典、语素、造词配置、审核批次和撤销使用 Phase 3 数据模型与真实 Repository；
   数据库迁移 v4 修复候选恢复，迁移 v5 支持同一批次分次提交和逐次撤销。
 - 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
 - 候选不得绕过审核写入词典；批量提交和撤销必须保持原子性。
 - Phase 3 总验收命令是 `npm run verify:phase3`。
+- Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
+- API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
 
 ## 开始工作
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
 - 再读 `.context/CONTEXT.md`；它记录当前代码的组合根、依赖方向和跨阶段接口边界。
-- Phase 1、Phase 1.5 和 Phase 2 已通过验收；Phase 3 当前实施基线见
-  `docs/phase-3-development-plan.md`。
+- Phase 1、Phase 1.5、Phase 2 和 Phase 3 已通过验收；Phase 4 实施基线见
+  `docs/phase-4-development-plan.md`。
 - Phase 1.5 的产品、信息架构和 UI/UX 以 `docs/phase-1-5-ui-ux-design-spec.md` 为最高优先级基线；与旧文档冲突时采用该方案。
 - Phase 3 只把通过真实 Repository 和 Sidecar 验证的词典、语素与造词能力标为
   可运行；其他设计稿、页面骨架或预留入口不得写成已经可用的功能。

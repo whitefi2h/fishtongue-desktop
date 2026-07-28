@@ -2,6 +2,7 @@ import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/po
 import { Lexeme, Morpheme } from "@/fishtongue/domain/models";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import {
+  Cross2Icon,
   DotsHorizontalIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -53,6 +54,7 @@ export default function LexiconWorkspace({
   const [search, setSearch] = useState("");
   const [morphemeSearch, setMorphemeSearch] = useState("");
   const [morphemeType, setMorphemeType] = useState<Morpheme["type"] | "all">("all");
+  const [morphemePickerOpen, setMorphemePickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -76,12 +78,16 @@ export default function LexiconWorkspace({
         .sort((left, right) => left.position - right.position)
         .map((item) => item.morphemeId),
     });
+    setMorphemeSearch("");
+    setMorphemePickerOpen(false);
     setError(undefined);
   }, []);
 
   const startCreating = useCallback(() => {
     setSelectedId(undefined);
     setDraft(emptyDraft);
+    setMorphemeSearch("");
+    setMorphemePickerOpen(false);
     setError(undefined);
   }, []);
 
@@ -137,6 +143,11 @@ export default function LexiconWorkspace({
         morpheme.meaning.toLocaleLowerCase().includes(query))
     );
   }, [morphemeLibrary, morphemeSearch, morphemeType]);
+  const selectedMorphemes = useMemo(() =>
+    draft.morphemes
+      .map((id) => morphemeLibrary.find((morpheme) => morpheme.id === id))
+      .filter((morpheme): morpheme is Morpheme => Boolean(morpheme)),
+  [draft.morphemes, morphemeLibrary]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -288,62 +299,83 @@ export default function LexiconWorkspace({
         <label><span>来源</span><select name="lexeme-source" value={draft.sourceType} onChange={(event) => setDraft((value) => ({ ...value, sourceType: event.target.value as Lexeme["sourceType"] }))}><option value="manual">人工</option><option value="generated">生成</option><option value="derived">派生</option><option value="imported">导入</option></select></label>
         <label><span>词义</span><textarea name="lexeme-senses" value={draft.senses} onChange={(event) => setDraft((value) => ({ ...value, senses: event.target.value }))} placeholder={"每行一个独立词义\n例如：海\n外海"} /></label>
         <label><span>备注</span><textarea name="lexeme-notes" value={draft.notes} onChange={(event) => setDraft((value) => ({ ...value, notes: event.target.value }))} placeholder="用法、资料状态或其他说明" /></label>
-        <fieldset>
+        <fieldset className={styles.compactPickerFieldset}>
           <legend>形态组成（按选择顺序保存）</legend>
           <p className={styles.fieldHint}>派生功能创建的词条会自动关联所用语素；手工词条可从语素库搜索并选择。</p>
-          {draft.morphemes.length > 1 && <div className={styles.morphemeOrder}>
-            {draft.morphemes.map((id, position) => {
-              const item = morphemeLibrary.find((morpheme) => morpheme.id === id);
-              return <span key={id}>
-                {position + 1}. {item?.form ?? id}
+          <div className={styles.compactPickerSummary}>
+            <span>{selectedMorphemes.length ? `已关联 ${selectedMorphemes.length} 个语素` : "尚未关联语素"}</span>
+            <button
+              type="button"
+              aria-expanded={morphemePickerOpen}
+              aria-controls="lexeme-morpheme-picker"
+              onClick={() => setMorphemePickerOpen((open) => !open)}
+            >
+              {morphemePickerOpen ? <Cross2Icon aria-hidden="true" /> : <PlusIcon aria-hidden="true" />}
+              {morphemePickerOpen ? "收起" : "添加语素"}
+            </button>
+          </div>
+          {selectedMorphemes.length > 0 && <div className={styles.morphemeOrder}>
+            {selectedMorphemes.map((item, position) => <span key={item.id}>
+              <strong>{position + 1}. {item.form}</strong>
+              <small>{item.meaning}</small>
+              <span className={styles.orderActions}>
                 <button type="button" disabled={position === 0} onClick={() => setDraft((value) => ({ ...value, morphemes: move(value.morphemes, position, position - 1) }))}>上移</button>
                 <button type="button" disabled={position === draft.morphemes.length - 1} onClick={() => setDraft((value) => ({ ...value, morphemes: move(value.morphemes, position, position + 1) }))}>下移</button>
-              </span>;
-            })}
+                <button type="button" aria-label={`移除语素 ${item.form}`} onClick={() => setDraft((value) => ({ ...value, morphemes: value.morphemes.filter((id) => id !== item.id) }))}>
+                  <Cross2Icon aria-hidden="true" />
+                </button>
+              </span>
+            </span>)}
           </div>}
-          <div className={styles.morphemePickerToolbar}>
-            <label className={styles.searchField}>
-              <MagnifyingGlassIcon aria-hidden="true" />
-              <input
-                aria-label="搜索语素"
-                autoComplete="off"
-                placeholder="搜索形式或含义…"
-                value={morphemeSearch}
-                onChange={(event) => setMorphemeSearch(event.target.value)}
-              />
-            </label>
-            <select
-              aria-label="按语素类型筛选"
-              value={morphemeType}
-              onChange={(event) => setMorphemeType(event.target.value as Morpheme["type"] | "all")}
-            >
-              <option value="all">全部类型</option>
-              <option value="root">词根</option>
-              <option value="prefix">前缀</option>
-              <option value="suffix">后缀</option>
-              <option value="infix">中缀</option>
-              <option value="circumfix">环缀</option>
-              <option value="clitic">黏着语素</option>
-              <option value="inflectional_ending">屈折词尾</option>
-            </select>
-          </div>
-          <div className={`${styles.phase3Checks} ${styles.morphemeChoices}`}>
-            {filteredMorphemes.map((morpheme) => <label key={morpheme.id}>
-              <input
-                type="checkbox"
-                checked={draft.morphemes.includes(morpheme.id)}
-                onChange={(event) => setDraft((value) => ({
-                  ...value,
-                  morphemes: event.target.checked
-                    ? [...value.morphemes, morpheme.id]
-                    : value.morphemes.filter((id) => id !== morpheme.id),
-                }))}
-              />
-              {morpheme.form} · {morpheme.meaning}
-            </label>)}
-            {!morphemeLibrary.length && <span>请先在“形态学 → 语素库”创建语素。</span>}
-            {Boolean(morphemeLibrary.length) && !filteredMorphemes.length && <span>没有匹配的语素。</span>}
-          </div>
+          {morphemePickerOpen && <div id="lexeme-morpheme-picker" className={styles.compactPickerPanel}>
+            <div className={styles.morphemePickerToolbar}>
+              <label className={styles.searchField}>
+                <MagnifyingGlassIcon aria-hidden="true" />
+                <input
+                  aria-label="搜索语素"
+                  autoComplete="off"
+                  placeholder="输入形式或含义查找…"
+                  value={morphemeSearch}
+                  onChange={(event) => setMorphemeSearch(event.target.value)}
+                />
+              </label>
+              <select
+                aria-label="按语素类型筛选"
+                value={morphemeType}
+                onChange={(event) => setMorphemeType(event.target.value as Morpheme["type"] | "all")}
+              >
+                <option value="all">全部类型</option>
+                <option value="root">词根</option>
+                <option value="prefix">前缀</option>
+                <option value="suffix">后缀</option>
+                <option value="infix">中缀</option>
+                <option value="circumfix">环缀</option>
+                <option value="clitic">黏着语素</option>
+                <option value="inflectional_ending">屈折词尾</option>
+              </select>
+            </div>
+            <div className={styles.compactPickerResults}>
+              {!morphemeLibrary.length
+                ? <span>请先在“形态学 → 语素库”创建语素。</span>
+                : !morphemeSearch.trim()
+                  ? <span>输入关键词后显示匹配语素。</span>
+                  : filteredMorphemes.filter((morpheme) => !draft.morphemes.includes(morpheme.id)).length
+                    ? filteredMorphemes
+                        .filter((morpheme) => !draft.morphemes.includes(morpheme.id))
+                        .map((morpheme) => <button
+                          type="button"
+                          key={morpheme.id}
+                          onClick={() => {
+                            setDraft((value) => ({ ...value, morphemes: [...value.morphemes, morpheme.id] }));
+                            setMorphemeSearch("");
+                          }}
+                        >
+                          <span><strong>{morpheme.form}</strong><small>{morpheme.meaning}</small></span>
+                          <PlusIcon aria-hidden="true" />
+                        </button>)
+                    : <span>没有可添加的匹配语素。</span>}
+            </div>
+          </div>}
         </fieldset>
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}
         </div>

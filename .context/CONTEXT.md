@@ -1,6 +1,6 @@
 # FishTongue 开发上下文
 
-## Phase 3 已实现边界
+## Phase 4 实施边界
 
 - Schema v3 扩展 `lexemes`，并新增语素、造词配置、概念表、审核批次、候选和批量操作记录。
   数据库迁移 v4 修复候选撤销恢复，迁移 v5 增加批量选择写入、同一批次分次提交和逐次撤销，
@@ -14,7 +14,11 @@
 - Phase 3 撤销只处理该阶段的批量提交。任何已提交词条在之后被修改，都会令整次撤销
   原子失败，不允许部分删除。
 - 正式词典、语素库和造词工作台只能读取真实项目 Repository；原型数据不得混入。
-- 总验收命令为 `npm run verify:phase3`；外部人工验收完成前 Phase 3 不标记为正式结项。
+- Phase 3 已通过外部人工验收并结项。Phase 4 在既有正式数据之外增加 AI 会话、上下文审计
+  和结构化提案；AI 不得绕过现有 Service 与 Repository 写入正式数据。
+- Provider 网络访问只存在于 Rust Adapter，API Key 只存在于 Windows 凭据管理器；
+  React 不获得通用 HTTP、Shell、文件系统或凭据读取能力。
+- Phase 4 数据库目标版本为 v6；项目容器格式仍为 v1。
 
 本文件记录需要跨阶段长期保持的实现边界。产品目标和用户说明见
 [`README.md`](../README.md)，代理工作规则见 [`AGENTS.md`](../AGENTS.md)。

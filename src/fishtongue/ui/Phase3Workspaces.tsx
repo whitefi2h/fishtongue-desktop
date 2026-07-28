@@ -181,6 +181,7 @@ function DerivationPanel({
   const [morphemeSearch, setMorphemeSearch] = useState("");
   const [morphemeType, setMorphemeType] = useState<MorphemeType | "all">("all");
   const [sourceSearch, setSourceSearch] = useState("");
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
   useEffect(() => { void application.listLexemes(languageId).then(setLexemes); }, [application, languageId]);
@@ -203,11 +204,17 @@ function DerivationPanel({
     const query = sourceSearch.trim().toLocaleLowerCase();
     return query
       ? lexemes.filter((lexeme) =>
-          lexeme.romanized.toLocaleLowerCase().includes(query) ||
-          lexeme.senses.some((sense) => sense.definition.toLocaleLowerCase().includes(query))
+          !selected.includes(lexeme.id) &&
+          (lexeme.romanized.toLocaleLowerCase().includes(query) ||
+          lexeme.senses.some((sense) => sense.definition.toLocaleLowerCase().includes(query)))
         )
-      : lexemes;
-  }, [lexemes, sourceSearch]);
+      : [];
+  }, [lexemes, selected, sourceSearch]);
+  const selectedLexemes = useMemo(() =>
+    selected
+      .map((id) => lexemes.find((lexeme) => lexeme.id === id))
+      .filter((lexeme): lexeme is Lexeme => Boolean(lexeme)),
+  [lexemes, selected]);
   const create = async () => {
     const morpheme = morphemes.find((item) => item.id === morphemeId);
     if (!morpheme) return;
@@ -233,9 +240,49 @@ function DerivationPanel({
       <label className={styles.phase3Wide}><span>派生语素</span><select value={morphemeId} onChange={(event) => setMorphemeId(event.target.value)}>
         <option value="">请选择</option>{selectableMorphemes.map((item) => <option key={item.id} value={item.id}>{item.form} · {typeLabels[item.type]} · {item.meaning}</option>)}
       </select></label>
-      <fieldset className={styles.phase3Wide}><legend>源词（已选 {selected.length}）</legend>
-        <label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索源词" autoComplete="off" value={sourceSearch} onChange={(event) => setSourceSearch(event.target.value)} placeholder="搜索词形或释义…" /></label>
-        <div className={styles.phase3Checks}>{filteredLexemes.map((item) => <label key={item.id}><input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />{item.romanized} · {item.senses[0]?.definition}</label>)}</div>
+      <fieldset className={`${styles.phase3Wide} ${styles.compactPickerFieldset}`}><legend>源词</legend>
+        <div className={styles.compactPickerSummary}>
+          <span>{selected.length ? `已选择 ${selected.length} 个源词` : "尚未选择源词"}</span>
+          <button
+            type="button"
+            aria-expanded={sourcePickerOpen}
+            aria-controls="derivation-source-picker"
+            onClick={() => setSourcePickerOpen((open) => !open)}
+          >
+            {sourcePickerOpen ? <Cross2Icon aria-hidden="true" /> : <PlusIcon aria-hidden="true" />}
+            {sourcePickerOpen ? "收起" : "添加源词"}
+          </button>
+        </div>
+        {selectedLexemes.length > 0 && <div className={styles.selectedSourceList}>
+          {selectedLexemes.map((item) => <span key={item.id}>
+            <span><strong>{item.romanized}</strong><small>{item.senses[0]?.definition || "无释义"}</small></span>
+            <button type="button" aria-label={`移除源词 ${item.romanized}`} onClick={() => setSelected((current) => current.filter((id) => id !== item.id))}>
+              <Cross2Icon aria-hidden="true" />
+            </button>
+          </span>)}
+        </div>}
+        {sourcePickerOpen && <div id="derivation-source-picker" className={styles.compactPickerPanel}>
+          <label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索源词" autoComplete="off" value={sourceSearch} onChange={(event) => setSourceSearch(event.target.value)} placeholder="输入词形或释义查找…" /></label>
+          <div className={styles.compactPickerResults}>
+            {!lexemes.length
+              ? <span>当前语言还没有可用于派生的词条。</span>
+              : !sourceSearch.trim()
+                ? <span>输入关键词后显示匹配词条。</span>
+                : filteredLexemes.length
+                  ? filteredLexemes.map((item) => <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => {
+                        setSelected((current) => [...current, item.id]);
+                        setSourceSearch("");
+                      }}
+                    >
+                      <span><strong>{item.romanized}</strong><small>{item.senses[0]?.definition || "无释义"}</small></span>
+                      <PlusIcon aria-hidden="true" />
+                    </button>)
+                  : <span>没有可添加的匹配词条。</span>}
+          </div>
+        </div>}
       </fieldset>
       {error && <p className={styles.lexemeError}>{error}</p>}
       <div className={styles.phase3Actions}><button className={styles.primaryButton} disabled={!morphemeId || !selected.length} onClick={() => void create()}>创建派生审核批次</button></div>

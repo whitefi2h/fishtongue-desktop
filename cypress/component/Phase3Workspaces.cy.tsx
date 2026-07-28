@@ -1,7 +1,8 @@
 import { WordGenerationEngine } from "@/fishtongue/application/ports/WordGenerationEngine";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
-import { GenerationBatch, Morpheme, ProjectSession } from "@/fishtongue/domain/models";
+import { GenerationBatch, Lexeme, Morpheme, ProjectSession } from "@/fishtongue/domain/models";
+import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
 import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
 
 const projectSession: ProjectSession = {
@@ -13,8 +14,8 @@ const projectSession: ProjectSession = {
 };
 
 function fakeApplication() {
-  const state: { morphemes: Morpheme[]; batches: GenerationBatch[]; committed: number } = {
-    morphemes: [], batches: [], committed: 0,
+  const state: { morphemes: Morpheme[]; lexemes: Lexeme[]; batches: GenerationBatch[]; committed: number } = {
+    morphemes: [], lexemes: [], batches: [], committed: 0,
   };
   const snapshot = {
     session: projectSession,
@@ -58,7 +59,13 @@ function fakeApplication() {
     },
     listLexiconBatchOperations: async () => [],
     undoLexiconBatchOperation: async () => {},
-    listLexemes: async () => [],
+    listLexemes: async () => structuredClone(state.lexemes),
+    saveLexeme: async (value: Lexeme) => {
+      state.lexemes = [...state.lexemes.filter((item) => item.id !== value.id), structuredClone(value)];
+    },
+    deleteLexeme: async (id: string) => {
+      state.lexemes = state.lexemes.filter((item) => item.id !== id);
+    },
     listConceptLists: async () => [],
     saveConceptList: async () => {},
     getInflectionSystem: async () => ({
@@ -111,6 +118,54 @@ describe("Phase 3 workspaces", () => {
     });
   });
 
+  it("keeps lexeme morphemes compact until the user searches for another one", () => {
+    const { app, state } = fakeApplication();
+    cy.viewport(1440, 900);
+    state.morphemes = [
+      morpheme("m1", "mar", "海洋"),
+      morpheme("m2", "in", "形容词词缀", "suffix"),
+    ];
+    state.lexemes = [lexeme("l1", "marin", "海洋的", ["m1"])];
+
+    cy.mount(<div style={{ containerName: "workspace", containerType: "inline-size", width: "100%" }}>
+      <LexiconWorkspace application={app} languageId="l1" createRequest={0} onProjectChanged={() => {}} onStatus={() => {}} />
+    </div>);
+    cy.contains("已关联 1 个语素").scrollIntoView().should("be.visible");
+    cy.contains("形容词词缀").should("not.exist");
+    cy.contains("button", "添加语素").click();
+    cy.get("input[aria-label='搜索语素']")
+      .should("have.css", "border-top-width", "0px")
+      .parent()
+      .should("have.css", "display", "flex");
+    cy.get("input[aria-label='搜索语素']").type("in");
+    cy.contains("button", "in").click();
+    cy.contains("已关联 2 个语素").should("be.visible");
+    cy.get("button[aria-label='移除语素 in']").should("be.visible");
+  });
+
+  it("shows only selected source words until the user searches", () => {
+    const { app, state } = fakeApplication();
+    state.morphemes = [morpheme("m1", "in", "形容词词缀", "suffix")];
+    state.lexemes = [
+      lexeme("l1", "mar", "海洋"),
+      lexeme("l2", "tal", "土地"),
+    ];
+
+    cy.mount(<MorphemeWorkspace application={app} languageId="l1" live onProjectChanged={() => {}} onStatus={() => {}} />);
+    cy.contains("批量派生").click();
+    cy.contains("尚未选择源词").should("be.visible");
+    cy.contains("土地").should("not.exist");
+    cy.contains("button", "添加源词").click();
+    cy.get("input[aria-label='搜索源词']")
+      .should("have.css", "border-top-width", "0px")
+      .parent()
+      .should("have.css", "display", "flex");
+    cy.get("input[aria-label='搜索源词']").type("土地");
+    cy.contains("button", "tal").click();
+    cy.contains("已选择 1 个源词").should("be.visible");
+    cy.get("button[aria-label='移除源词 tal']").should("be.visible");
+  });
+
   it("keeps generated candidates outside the dictionary until review", () => {
     const { app, state } = fakeApplication();
     const service = new WordGenerationService(new TestWordEngine());
@@ -159,3 +214,45 @@ describe("Phase 3 workspaces", () => {
     cy.wrap(null).then(() => expect(state.batches).to.have.length(0));
   });
 });
+
+function morpheme(
+  id: string,
+  form: string,
+  meaning: string,
+  type: Morpheme["type"] = "root"
+): Morpheme {
+  return {
+    id,
+    languageId: "l1",
+    form,
+    type,
+    meaning,
+    applicablePartOfSpeech: "",
+    status: "confirmed",
+    compositionRule: { mode: "template", template: "{stem}{morpheme}" },
+    notes: "",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
+
+function lexeme(id: string, romanized: string, definition: string, morphemeIds: string[] = []): Lexeme {
+  return {
+    id,
+    languageId: "l1",
+    romanized,
+    ipa: "",
+    partOfSpeech: "未分类",
+    status: "draft",
+    sourceType: "manual",
+    notes: "",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    senses: [{ id: `${id}-sense`, definition, position: 0 }],
+    morphemes: morphemeIds.map((morphemeId, position) => ({
+      morphemeId,
+      position,
+      role: "composition",
+    })),
+  };
+}
