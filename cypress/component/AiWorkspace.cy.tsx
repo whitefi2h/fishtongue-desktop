@@ -57,6 +57,7 @@ function fakeAi() {
       return structuredClone(detail);
     },
     cancel: async () => {},
+    stageProposal: async () => {},
     rejectProposal: async () => {},
     applyProposal: async () => {},
   };

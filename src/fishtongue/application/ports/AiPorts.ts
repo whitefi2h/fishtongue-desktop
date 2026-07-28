@@ -136,6 +136,7 @@ export interface AiApplication {
     signal?: AbortSignal;
   }): Promise<AiConversationDetail>;
   cancel(): Promise<void>;
+  stageProposal(id: string, patch: Record<string, unknown>): Promise<void>;
   rejectProposal(id: string): Promise<void>;
   applyProposal(id: string): Promise<void>;
 }

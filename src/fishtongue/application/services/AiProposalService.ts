@@ -28,6 +28,23 @@ export default class AiProposalService {
     await this.project.markProjectChanged();
   }
 
+  async stage(id: string, patch: Record<string, unknown>): Promise<void> {
+    const proposal = await this.requireProposal(id);
+    if (!["pending", "staged"].includes(proposal.status)) {
+      throw new Error("该提案已经处理，不能再编辑。");
+    }
+    if (!patch || Array.isArray(patch) || typeof patch !== "object") {
+      throw new Error("提案字段必须是 JSON 对象。");
+    }
+    await this.repository.updateProposal({
+      ...proposal,
+      patch,
+      status: "staged",
+      updatedAt: new Date().toISOString(),
+    });
+    await this.project.markProjectChanged();
+  }
+
   async apply(id: string): Promise<void> {
     const proposal = await this.requireProposal(id);
     if (!["pending", "staged"].includes(proposal.status)) {

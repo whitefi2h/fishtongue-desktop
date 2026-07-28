@@ -162,6 +162,9 @@ export default class AiAssistantService implements AiApplication {
   }
 
   cancel() { return this.providers.cancel(); }
+  stageProposal(id: string, patch: Record<string, unknown>) {
+    return this.proposalService.stage(id, patch);
+  }
   rejectProposal(id: string) { return this.proposalService.reject(id); }
   applyProposal(id: string) { return this.proposalService.apply(id); }
 }

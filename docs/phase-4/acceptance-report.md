@@ -18,12 +18,12 @@ Phase 4 的实现和本机自动验收已经完成，尚未通过外部 Windows 
 
 - Jest：19 个测试套件、72 项测试全部通过。
 - Cypress：17 个规格、94 项测试全部通过。
-- Rust 与 Schema v6：21 项测试通过，`cargo check` 通过。
+- Rust 与 Schema v6：22 项测试通过，`cargo check` 通过；含三类流式协议分片解析测试。
 - Lexurgy/造词引擎及契约回归：通过。
 - Next.js 静态导出、Phase 4 架构与秘密扫描：通过。
 - Windows x64 NSIS 安装包：`FishTongue_0.4.0-phase.4_x64-setup.exe`。
-- 安装包大小：51,118,382 字节。
-- SHA-256：`72E92D93769AEF63903FF4B32D68DBC993C438EBDDA2FE7E7E10C5573CAE25D2`。
+- 安装包大小：51,141,243 字节。
+- SHA-256：`D8628DFBAC2DB9DF86D376CE29045E217C921502D953CD87FF25004ACE268257`。
 - 安装包内容审计：通过。
 - 数字签名：未签名。
 

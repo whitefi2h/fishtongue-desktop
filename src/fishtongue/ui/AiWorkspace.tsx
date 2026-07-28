@@ -264,21 +264,65 @@ export function AiSidebar({ ai, context, live, onClose, onSettings, onStatus }: 
       {streamed && <article className={styles.aiMessage} data-role="assistant"><small>正在回答</small><p>{streamed}</p></article>}
       {latestAudit && <details className={styles.aiReferences}><summary>本次引用 {latestAudit.references.length} 项</summary>
         {latestAudit.references.map((reference) => <span key={`${reference.type}-${reference.id}`}><strong>{reference.label}</strong><small>{reference.detail}</small></span>)}</details>}
-      {detail?.proposals.filter((proposal) => proposal.status !== "rejected").map((proposal) => <article className={styles.proposalCard} key={proposal.id}>
-        <span>{proposal.kind} · {proposal.status}</span><strong>{proposal.summary}</strong>
-        <details><summary>查看拟议字段</summary><pre>{JSON.stringify(proposal.patch, null, 2)}</pre></details>
-        <div><button disabled={proposal.status !== "pending"} onClick={async () => {
-          try { await ai.rejectProposal(proposal.id); setDetail(await ai.loadConversation(detail.conversation.id)); }
-          catch (error) { onStatus(error instanceof Error ? error.message : String(error)); }
-        }}>拒绝</button><button className={styles.primaryButton} disabled={proposal.status !== "pending"} onClick={async () => {
-          try { await ai.applyProposal(proposal.id); setDetail(await ai.loadConversation(detail.conversation.id)); onStatus("提案已通过验证并保存到项目。"); }
-          catch (error) { onStatus(error instanceof Error ? error.message : String(error)); setDetail(await ai.loadConversation(detail.conversation.id)); }
-        }}>验证并保存</button></div>
-      </article>)}
+      {detail?.proposals.filter((proposal) => proposal.status !== "rejected").map((proposal) =>
+        <ProposalCard
+          key={proposal.id}
+          proposal={proposal}
+          onStage={(patch) => ai.stageProposal(proposal.id, patch)}
+          onReject={() => ai.rejectProposal(proposal.id)}
+          onApply={() => ai.applyProposal(proposal.id)}
+          onReload={async () => setDetail(await ai.loadConversation(detail.conversation.id))}
+          onStatus={onStatus}
+        />)}
     </div>
     <form className={styles.aiComposer} onSubmit={send}><textarea aria-label="询问当前页面" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={live ? `将发送：${scope === "page" ? "当前页面" : scope === "language" ? "当前语言" : "整个项目"}` : "请先打开真实项目"} disabled={!live || !activeConfig || busy} />
       {busy ? <button type="button" aria-label="停止" onClick={() => void ai.cancel()}><StopIcon /></button> : <button disabled={!live || !activeConfig || !prompt.trim()}>发送</button>}</form>
   </aside>;
+}
+
+function ProposalCard({
+  proposal, onStage, onReject, onApply, onReload, onStatus,
+}: {
+  proposal: import("@/fishtongue/domain/models").AiProposal;
+  onStage: (patch: Record<string, unknown>) => Promise<void>;
+  onReject: () => Promise<void>;
+  onApply: () => Promise<void>;
+  onReload: () => Promise<void>;
+  onStatus: (message: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => JSON.stringify(proposal.patch, null, 2));
+  const reviewable = ["pending", "staged"].includes(proposal.status);
+  const run = async (action: () => Promise<void>, success?: string) => {
+    try {
+      await action();
+      await onReload();
+      if (success) onStatus(success);
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : String(error));
+      await onReload();
+    }
+  };
+  return <article className={styles.proposalCard}>
+    <span>{proposal.kind} · {proposal.status}</span><strong>{proposal.summary}</strong>
+    <details open={editing}><summary>字段差异与编辑</summary>
+      {editing
+        ? <textarea aria-label="编辑提案字段" value={draft} onChange={(event) => setDraft(event.target.value)} />
+        : <pre>{JSON.stringify(proposal.patch, null, 2)}</pre>}
+    </details>
+    <div>
+      <button disabled={!reviewable} onClick={() => void run(onReject)}>拒绝</button>
+      {editing
+        ? <button disabled={!reviewable} onClick={() => void run(async () => {
+            const value = JSON.parse(draft) as unknown;
+            if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("提案字段必须是 JSON 对象。");
+            await onStage(value as Record<string, unknown>);
+            setEditing(false);
+          }, "提案修改已暂存，尚未写入项目。")}>暂存修改</button>
+        : <button disabled={!reviewable} onClick={() => setEditing(true)}>编辑</button>}
+      <button className={styles.primaryButton} disabled={!reviewable} onClick={() => void run(onApply, "提案已通过验证并保存到项目。")}>验证并保存</button>
+    </div>
+  </article>;
 }
 
 function emptyConfig(kind: AiProviderKind): AiProviderConfig {
