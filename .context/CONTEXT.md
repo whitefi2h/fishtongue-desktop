@@ -20,6 +20,27 @@
   React 不获得通用 HTTP、Shell、文件系统或凭据读取能力。
 - Phase 4 数据库目标版本为 v6；项目容器格式仍为 v1。
 
+### AI 依赖方向与安全边界
+
+```text
+AiWorkspace
+→ AiApplication
+→ AiProviderPort / AiContextBroker / AiConversationRepository
+→ TauriAiProviderAdapter / SQLite Repository
+→ Rust Provider Adapter / Windows Credential Manager
+```
+
+- `src-tauri/src/ai.rs` 是唯一可读取 Provider 凭据并访问外部模型服务的模块。
+- Provider 普通设置存 Tauri Store；项目数据库只保存 Provider 名称、类型、模型快照和
+  对话审计，不保存 API Key。
+- 自定义远程地址强制 HTTPS；仅 `localhost`、`127.0.0.1` 和 `::1` 可使用 HTTP。
+- `ProjectAiContextBroker` 只通过 `ProjectApplication` 读取正式数据。页面范围不自动加载
+  整个词典；语言和项目范围均实施记录数与字节数上限。
+- 模型返回的提案必须匹配五类白名单。保存前 `AiProposalService` 重新计算目标规范快照哈希；
+  目标改变后提案只能进入 `stale`，不得覆盖。
+- AI 会话写入也必须调用 `ProjectApplication.markProjectChanged()`，从而进入既有项目自动保存、
+  备份和恢复流程。
+
 本文件记录需要跨阶段长期保持的实现边界。产品目标和用户说明见
 [`README.md`](../README.md)，代理工作规则见 [`AGENTS.md`](../AGENTS.md)。
 Phase 1.5 的页面、交互和功能信息架构见

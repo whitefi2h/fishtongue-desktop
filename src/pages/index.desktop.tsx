@@ -1,5 +1,5 @@
 import {
-  createDesktopProjectApplication,
+  createDesktopApplications,
   createDesktopWindowPort,
   createDesktopSoundChangeService,
   createDesktopInflectionService,
@@ -9,7 +9,8 @@ import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 import { useMemo } from "react";
 
 export default function FishTongueDesktop() {
-  const application = useMemo(() => createDesktopProjectApplication(), []);
+  const applications = useMemo(() => createDesktopApplications(), []);
+  const application = applications.project;
   const windowPort = useMemo(() => createDesktopWindowPort(), []);
   const soundChangeService = useMemo(() => createDesktopSoundChangeService(), []);
   const inflectionService = useMemo(() => createDesktopInflectionService(), []);
@@ -21,6 +22,7 @@ export default function FishTongueDesktop() {
       soundChangeService={soundChangeService}
       inflectionService={inflectionService}
       wordGenerationService={wordGenerationService}
+      aiApplication={applications.ai}
     />
   );
 }

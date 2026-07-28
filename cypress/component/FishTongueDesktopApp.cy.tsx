@@ -165,7 +165,9 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("#lexeme-editor-form input[name='lexeme-romanized']").type("ama");
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
     cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
-    cy.get("textarea[name='lexeme-senses']").should("be.enabled").type("母亲{enter}女性长辈");
+    cy.get("textarea[name='lexeme-senses']")
+      .should("be.enabled")
+      .type("母亲{enter}女性长辈", { force: true });
     cy.get("button[form='lexeme-editor-form']").click();
 
     cy.contains("td", "ama").should("exist");

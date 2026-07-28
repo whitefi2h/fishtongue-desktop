@@ -994,10 +994,11 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "fishtongue"
-version = "0.3.0-phase.3.2"
+version = "0.4.0-phase.4"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "keyring",
  "rand 0.9.5",
  "reqwest 0.12.28",
  "serde",
@@ -1011,8 +1012,10 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "url",
  "uuid",
  "walkdir",
+ "zeroize",
  "zip",
 ]
 
@@ -1961,6 +1964,18 @@ dependencies = [
  "bitflags 2.13.1",
  "serde",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "keyring"
+version = "3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
+dependencies = [
+ "byteorder",
+ "log",
+ "windows-sys 0.60.2",
+ "zeroize",
 ]
 
 [[package]]

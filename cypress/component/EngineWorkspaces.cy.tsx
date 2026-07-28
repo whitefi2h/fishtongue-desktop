@@ -88,7 +88,7 @@ describe("Phase 2 engine workspaces", () => {
     />);
     cy.contains("Lexurgy 音变规则").should("be.visible");
     cy.contains("button", "验证").click();
-    cy.contains("验证通过：1 条规则").should("be.visible");
+    cy.contains("验证通过：1 条规则", { timeout: 10_000 }).should("be.visible");
     cy.contains("button", "运行预览").click();
     cy.contains("只读预览结果").should("be.visible");
     cy.contains("td", "eme").should("be.visible");

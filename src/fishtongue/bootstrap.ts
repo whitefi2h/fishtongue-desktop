@@ -20,6 +20,13 @@ import {
   SqliteMorphemeRepository,
   SqliteWordGenerationProfileRepository,
 } from "@/fishtongue/infrastructure/Phase3Repositories";
+import SqliteAiConversationRepository from "@/fishtongue/infrastructure/AiRepositories";
+import TauriAiProviderAdapter from "@/fishtongue/infrastructure/TauriAiProviderAdapter";
+import TauriAiProviderConfigStore from "@/fishtongue/infrastructure/TauriAiProviderConfigStore";
+import ProjectAiContextBroker from "@/fishtongue/application/services/ProjectAiContextBroker";
+import AiAssistantService from "@/fishtongue/application/services/AiAssistantService";
+import AiProposalService from "@/fishtongue/application/services/AiProposalService";
+import { AiApplication } from "@/fishtongue/application/ports/AiPorts";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -36,6 +43,10 @@ export function createDesktopWordGenerationService(): WordGenerationService {
 
 export function createDesktopProjectApplication(): ProjectSessionService {
   const database = new TauriDatabaseSession();
+  return createProjectApplication(database);
+}
+
+function createProjectApplication(database: TauriDatabaseSession): ProjectSessionService {
   return new ProjectSessionService(
     new TauriProjectFileAdapter(),
     database,
@@ -50,6 +61,26 @@ export function createDesktopProjectApplication(): ProjectSessionService {
     new SqliteGenerationBatchRepository(database),
     new TauriRecentProjectStore()
   );
+}
+
+export function createDesktopApplications(): {
+  project: ProjectSessionService;
+  ai: AiApplication;
+} {
+  const database = new TauriDatabaseSession();
+  const project = createProjectApplication(database);
+  const repository = new SqliteAiConversationRepository(database);
+  const wordGeneration = createDesktopWordGenerationService();
+  const proposals = new AiProposalService(project, repository, wordGeneration);
+  const ai = new AiAssistantService(
+    new TauriAiProviderAdapter(),
+    new TauriAiProviderConfigStore(),
+    repository,
+    new ProjectAiContextBroker(project),
+    project,
+    proposals
+  );
+  return { project, ai };
 }
 
 export function createDesktopWindowPort(): TauriDesktopWindowAdapter {

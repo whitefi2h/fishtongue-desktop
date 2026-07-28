@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 5;
+pub const DATABASE_SCHEMA_VERSION: u32 = 6;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -30,9 +30,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 5,
             description: "improve_phase_3_review_workflow",
             sql: include_str!("../migrations/0005_phase_3_review_workflow.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "create_phase_4_ai_assistant_schema",
+            sql: include_str!("../migrations/0006_phase_4_ai_assistant.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -66,6 +72,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply Phase 3 review workflow fixes");
+        sqlx::raw_sql(include_str!("../migrations/0006_phase_4_ai_assistant.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 4 AI assistant schema");
         connection
     }
 
@@ -359,5 +369,44 @@ mod tests {
             .unwrap()
             .get("romanized");
         assert_eq!(remaining_lexeme, "mi");
+    }
+
+    #[tokio::test]
+    async fn schema_v6_atomically_persists_ai_turn_without_secrets() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', '项目', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', '阿兰语', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO ai_conversations VALUES (
+              'c', 'p', 'l', '词典建议', 'openai', 'OpenAI', 'chosen-model',
+              'language', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            INSERT INTO ai_turn_write_commands VALUES (
+              'command', 'c',
+              '{"id":"m","content":"建议添加词条","status":"complete","providerKind":"openai","providerLabel":"OpenAI","modelId":"chosen-model","usageJson":"{}","createdAt":"2026-01-02T00:00:00Z"}',
+              '[{"id":"a","kind":"lexeme.upsert","languageId":"l","targetId":null,"baseSnapshotHash":"new","patchJson":"{\"romanized\":\"ŋa\"}","summary":"添加鱼"}]',
+              '{"id":"audit","providerKind":"openai","providerLabel":"OpenAI","modelId":"chosen-model","endpointLabel":"https://api.openai.com","contextScope":"language","contextJson":"{\"language\":\"阿兰语\"}","referencesJson":"[]","toolCallsJson":"[]","contextBytes":24,"outcome":"complete","errorCode":null}'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let message_count: i64 = sqlx::query("SELECT count(*) count FROM ai_messages")
+            .fetch_one(&mut database).await.unwrap().get("count");
+        let proposal_count: i64 = sqlx::query("SELECT count(*) count FROM ai_proposals")
+            .fetch_one(&mut database).await.unwrap().get("count");
+        let command_count: i64 = sqlx::query("SELECT count(*) count FROM ai_turn_write_commands")
+            .fetch_one(&mut database).await.unwrap().get("count");
+        assert_eq!((message_count, proposal_count, command_count), (1, 1, 0));
+
+        for table in ["ai_conversations", "ai_messages", "ai_proposals", "ai_context_audits"] {
+            let columns: Vec<String> = sqlx::query(&format!("PRAGMA table_info({table})"))
+                .fetch_all(&mut database).await.unwrap().into_iter()
+                .map(|row| row.get::<String, _>("name")).collect();
+            assert!(!columns.iter().any(|column| column.contains("secret") || column.contains("api_key")));
+        }
     }
 }

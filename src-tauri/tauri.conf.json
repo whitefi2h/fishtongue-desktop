@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FishTongue",
-  "version": "0.3.0-phase.3.2",
+  "version": "0.4.0-phase.4",
   "identifier": "com.fishtongue.desktop",
   "build": {
     "frontendDist": "../out",

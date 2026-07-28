@@ -8,6 +8,7 @@
 - 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
 - 候选不得绕过审核写入词典；批量提交和撤销必须保持原子性。
 - Phase 3 总验收命令是 `npm run verify:phase3`。
+- Phase 4 总验收命令是 `npm run verify:phase4`；外部人工验收前不得创建结项标签。
 - Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
 - API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
 

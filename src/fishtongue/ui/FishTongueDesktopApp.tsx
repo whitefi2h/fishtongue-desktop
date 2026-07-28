@@ -4,9 +4,11 @@ import InflectionService from "@/fishtongue/application/services/InflectionServi
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
 import { Language } from "@/fishtongue/domain/models";
+import { AiApplication } from "@/fishtongue/application/ports/AiPorts";
 import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
 import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
+import { AiSettingsPage, AiSidebar as LiveAiSidebar } from "@/fishtongue/ui/AiWorkspace";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -114,6 +116,7 @@ const icons: Partial<Record<WorkspaceRoute, ElementType>> = {
   contact: GlobeIcon,
   translation: ColumnsIcon,
   "developer-tools": CodeIcon,
+  "ai-settings": GearIcon,
 };
 
 const menus = [
@@ -122,7 +125,7 @@ const menus = [
   { label: "视图", items: [["项目主页", "", "project-home"], ["语言谱系", "", "genealogy"], ["切换导航栏", "", "toggle-nav"], ["切换 AI", "", "toggle-ai"], ["切换主题", "", "toggle-theme"]] },
   { label: "项目", items: [["项目属性", "", "project-settings"], ["新建语言", "", "new-language"], ["导入语言", "", "planned"], ["历史事件", "", "events"], ["项目诊断", "", "planned"]] },
   { label: "语言", items: [["语言属性", "", "language-properties"], ["阶段管理", "", "stages"], ["方言管理", "", "dialects"], ["创建下一阶段", "", "planned"], ["验证语言", "", "planned"]] },
-  { label: "工具", items: [["IPA 工具", "", "phonology"], ["音变规则测试器", "", "evolution"], ["批量导入", "", "planned"], ["开发者工具", "", "developer-tools"], ["AI 与模型设置", "", "planned"]] },
+  { label: "工具", items: [["IPA 工具", "", "phonology"], ["音变规则测试器", "", "evolution"], ["批量导入", "", "planned"], ["开发者工具", "", "developer-tools"], ["AI 与模型设置", "", "ai-settings"]] },
   { label: "帮助", items: [["Lexurgy 规则快速参考", "F1", "lexurgy-help"], ["快捷键", "", "planned"], ["语言学术术语", "", "planned"], ["关于 FishTongue", "", "planned"]] },
 ] as const;
 
@@ -132,7 +135,7 @@ const englishMenus = [
   { label: "View", items: [["Project home", "", "project-home"], ["Language family", "", "genealogy"], ["Toggle navigation", "", "toggle-nav"], ["Toggle AI", "", "toggle-ai"], ["Switch theme", "", "toggle-theme"]] },
   { label: "Project", items: [["Project properties", "", "project-settings"], ["New language", "", "new-language"], ["Import language", "", "planned"], ["Historical events", "", "events"], ["Project diagnostics", "", "planned"]] },
   { label: "Language", items: [["Language properties", "", "language-properties"], ["Manage stages", "", "stages"], ["Manage dialects", "", "dialects"], ["Create next stage", "", "planned"], ["Validate language", "", "planned"]] },
-  { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "planned"]] },
+  { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "ai-settings"]] },
   { label: "Help", items: [["Lexurgy quick reference", "F1", "lexurgy-help"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["About FishTongue", "", "planned"]] },
 ] as const;
 
@@ -142,12 +145,14 @@ export default function FishTongueDesktopApp({
   soundChangeService,
   inflectionService,
   wordGenerationService,
+  aiApplication,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
+  aiApplication?: AiApplication;
 }) {
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -501,6 +506,7 @@ export default function FishTongueDesktopApp({
                 soundChangeService={soundChangeService}
                 inflectionService={inflectionService}
                 wordGenerationService={wordGenerationService}
+                aiApplication={aiApplication}
                 lexiconCreateRequest={lexiconCreateRequest}
                 lexiconEntryTab={lexiconEntryTab}
                 onOpenCandidateReview={() => navigate("lexicon", "review")}
@@ -509,7 +515,23 @@ export default function FishTongueDesktopApp({
                 onCreateLanguage={() => setDialog("new-language")}
               />
             </main>
-            {aiOpen && <AiSidebar onClose={() => setAiOpen(false)} />}
+            {aiOpen && (aiApplication
+              ? <LiveAiSidebar
+                  ai={aiApplication}
+                  live={Boolean(snapshot)}
+                  context={{
+                    route,
+                    pageTitle,
+                    projectId: snapshot?.project.id ?? prototypeProject.id,
+                    projectName,
+                    languageId: workspaceLevel === "language" && snapshot ? selectedLanguage.id : undefined,
+                    languageName: workspaceLevel === "language" ? selectedLanguage.name : undefined,
+                  }}
+                  onClose={() => setAiOpen(false)}
+                  onSettings={() => navigate("ai-settings")}
+                  onStatus={setMessage}
+                />
+              : <PrototypeAiSidebar onClose={() => setAiOpen(false)} />)}
           </div>
           <StatusBar snapshot={snapshot} level={workspaceLevel} language={selectedLanguage} stage={selectedStage?.name} message={message} />
         </div>
@@ -866,6 +888,7 @@ const pageDescriptions: Record<WorkspaceRoute, string> = {
   contact: "以历史事件组织借词、仿译和结构影响提案。",
   translation: "使用项目词典和规则辅助翻译，缺失词汇进入审核。",
   "developer-tools": "受限脚本工作台；只读试运行后才能预览补丁。",
+  "ai-settings": "配置模型服务、凭据、默认模型和联网隐私许可。",
   map: "地图视图将在后续版本提供。",
   reconstruction: "自动逆向历史重构将在后续版本提供。",
   "unsafe-scripting": "高级本机代码模式将在后续版本提供。",
@@ -891,6 +914,7 @@ const pageDescriptionsEn: Record<WorkspaceRoute, string> = {
   contact: "Organize borrowing, calques, and structural influence as reviewable proposals.",
   translation: "Use project vocabulary for assisted translation and send missing words to review.",
   "developer-tools": "A constrained scripting workspace with read-only trials and patch previews.",
+  "ai-settings": "Configure model services, credentials, default models, and network privacy consent.",
   map: "The map view will be delivered in a later phase.",
   reconstruction: "Automatic reverse historical reconstruction is planned for a later phase.",
   "unsafe-scripting": "Advanced local-code mode is planned for a later phase.",
@@ -907,6 +931,7 @@ function PageContent(props: {
   soundChangeService?: SoundChangeService;
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
+  aiApplication?: AiApplication;
   lexiconCreateRequest: number;
   lexiconEntryTab: "dictionary" | "review";
   onOpenCandidateReview: () => void;
@@ -956,6 +981,9 @@ function PageContent(props: {
     case "contact": return <ContactPage />;
     case "translation": return <TranslationPage />;
     case "developer-tools": return <DeveloperToolsPage />;
+    case "ai-settings": return props.aiApplication
+      ? <AiSettingsPage ai={props.aiApplication} onStatus={props.onStatus} />
+      : <LiveProjectPlaceholder title="AI 设置仅在桌面应用中可用" />;
     default: return <PlannedPage route={props.route} onExplain={() => props.onPlanned(routesById[props.route].label)} />;
   }
 }
@@ -1166,7 +1194,7 @@ function PlannedPage({ route, onExplain }: { route: WorkspaceRoute; onExplain: (
   return <EmptyState title={routesById[route].label} body={pageDescriptions[route]} action="查看后续规划" onAction={onExplain} />;
 }
 
-function AiSidebar({ onClose }: { onClose: () => void }) {
+function PrototypeAiSidebar({ onClose }: { onClose: () => void }) {
   return <aside className={styles.aiSidebar}><div className={styles.aiHeader}><span><ChatBubbleIcon aria-hidden="true" /><strong>AI 助手</strong></span><button title="关闭 AI 侧栏" aria-label="关闭 AI 侧栏" onClick={onClose}><Cross2Icon aria-hidden="true" /></button></div>
     <div className={styles.contextScope}><strong>上下文范围</strong><label><input type="radio" name="scope" defaultChecked />当前页面</label><label><input type="radio" name="scope" />当前语言</label><label><input type="radio" name="scope" />整个项目</label></div>
     <div className={styles.aiConversation}><div className={styles.emptyAi}><ChatBubbleIcon aria-hidden="true" /><strong>从当前页面开始</strong><p>AI 尚未连接。未来只能读取允许的上下文并生成提案。</p></div>

@@ -246,3 +246,112 @@ export interface RecentProject {
   lastOpenedAt: UtcTimestamp;
 }
 
+export type AiProviderKind =
+  | "openai"
+  | "gemini"
+  | "deepseek"
+  | "openai_compatible";
+export type AiContextScope = "page" | "language" | "project";
+export type AiMessageStatus = "complete" | "error" | "cancelled";
+export type AiProposalKind =
+  | "lexeme.upsert"
+  | "morpheme.upsert"
+  | "wordgen_profile.upsert"
+  | "evolution.update_draft"
+  | "inflection_system.update_draft";
+export type AiProposalStatus =
+  | "pending"
+  | "staged"
+  | "applied"
+  | "rejected"
+  | "stale";
+
+export interface AiProviderConfig {
+  id: string;
+  name: string;
+  kind: AiProviderKind;
+  baseUrl: string;
+  defaultModel: string;
+  enabled: boolean;
+  isDefault: boolean;
+  privacyConsentVersion?: number;
+  modelCache?: { values: AiModel[]; expiresAt: string };
+}
+
+export interface AiModel {
+  id: string;
+  label: string;
+}
+
+export interface AiConversation {
+  id: string;
+  projectId: string;
+  languageId?: string;
+  title: string;
+  providerKind: AiProviderKind;
+  providerLabel: string;
+  modelId: string;
+  contextScope: AiContextScope;
+  allowExpansion: boolean;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface AiMessage {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant";
+  content: string;
+  status: AiMessageStatus;
+  providerKind: AiProviderKind;
+  providerLabel: string;
+  modelId: string;
+  usage: Record<string, unknown>;
+  createdAt: UtcTimestamp;
+}
+
+export interface AiContextReference {
+  id: string;
+  type: "page" | "language" | "lexeme" | "morpheme" | "evolution" | "inflection" | "wordgen";
+  label: string;
+  detail: string;
+}
+
+export interface AiProposal {
+  id: string;
+  messageId: string;
+  kind: AiProposalKind;
+  languageId: string;
+  targetId?: string;
+  baseSnapshotHash: string;
+  patch: Record<string, unknown>;
+  summary: string;
+  status: AiProposalStatus;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface AiContextAudit {
+  id: string;
+  messageId: string;
+  providerKind: AiProviderKind;
+  providerLabel: string;
+  modelId: string;
+  endpointLabel: string;
+  contextScope: AiContextScope;
+  context: Record<string, unknown>;
+  references: AiContextReference[];
+  toolCalls: unknown[];
+  contextBytes: number;
+  outcome: AiMessageStatus;
+  errorCode?: string;
+  createdAt: UtcTimestamp;
+}
+
+export interface AiConversationDetail {
+  conversation: AiConversation;
+  messages: AiMessage[];
+  proposals: AiProposal[];
+  audits: AiContextAudit[];
+}
+

@@ -64,4 +64,5 @@ export interface ProjectApplication {
   getInflectionSystem(languageId: string): Promise<InflectionSystem>;
   saveInflectionSystem(system: InflectionSystem): Promise<void>;
   getSnapshot(): ProjectSnapshot | null;
+  markProjectChanged(): Promise<void>;
 }

@@ -58,6 +58,10 @@ export default class ProjectSessionService implements ProjectApplication {
     return this.snapshot;
   }
 
+  async markProjectChanged(): Promise<void> {
+    await this.changed(this.requireSnapshot());
+  }
+
   async createProject(name: string): Promise<ProjectSnapshot | null> {
     const normalizedName = requiredText(name, "项目名称");
     await this.prepareForProjectSwitch();
