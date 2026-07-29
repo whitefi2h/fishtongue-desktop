@@ -71,7 +71,12 @@ export function createDesktopApplications(): {
   const project = createProjectApplication(database);
   const repository = new SqliteAiConversationRepository(database);
   const wordGeneration = createDesktopWordGenerationService();
-  const proposals = new AiProposalService(project, repository, wordGeneration);
+  const proposals = new AiProposalService(
+    project,
+    repository,
+    wordGeneration,
+    createDesktopSoundChangeService()
+  );
   const ai = new AiAssistantService(
     new TauriAiProviderAdapter(),
     new TauriAiProviderConfigStore(),

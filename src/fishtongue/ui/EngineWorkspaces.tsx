@@ -1,4 +1,6 @@
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
+import { normalizeInflectionRules } from "@/fishtongue/application/services/AiProposalService";
 import {
   SoundChangeRunResult,
   ValidationResult,
@@ -26,11 +28,15 @@ export function EvolutionWorkspace({
   service,
   languageId,
   live,
+  aiDraft,
+  onAiDraftConsumed,
 }: {
   application: ProjectApplication;
   service?: SoundChangeService;
   languageId: string;
   live: boolean;
+  aiDraft?: AiProposalDraft;
+  onAiDraftConsumed?: (requestId: string) => void;
 }) {
   const enabled = live && Boolean(service);
   const [evolution, setEvolution] = useState<Evolution | null>(null);
@@ -41,7 +47,9 @@ export function EvolutionWorkspace({
   const [status, setStatus] = useState("引擎尚未启动");
   const [error, setError] = useState<string>();
   const [dirty, setDirty] = useState(false);
+  const [aiPending, setAiPending] = useState(false);
   const controller = useRef<AbortController>();
+  const processedDraft = useRef<string>();
 
   useEffect(() => {
     setEvolution(null);
@@ -49,6 +57,7 @@ export function EvolutionWorkspace({
     setValidation(undefined);
     setError(undefined);
     setDirty(false);
+    setAiPending(false);
     if (!enabled || !service) return;
     void Promise.all([
       application.getEvolution(languageId),
@@ -64,7 +73,38 @@ export function EvolutionWorkspace({
   }, [application, enabled, languageId, service]);
 
   useEffect(() => {
-    if (!live || !dirty || !evolution) return;
+    if (
+      !evolution
+      || !aiDraft
+      || aiDraft.kind !== "evolution.update_draft"
+      || processedDraft.current === aiDraft.requestId
+    ) return;
+    processedDraft.current = aiDraft.requestId;
+    const patch = aiDraft.patch;
+    const testWords = Array.isArray(patch.testWords)
+      ? patch.testWords.map((value, position) => ({
+          id: uuid(),
+          word: typeof value === "object" && value
+            ? String((value as Record<string, unknown>).word ?? "")
+            : String(value),
+          position,
+        })).filter((item) => item.word)
+      : evolution.testWords;
+    setEvolution({
+      ...evolution,
+      soundChanges: String(patch.soundChanges ?? ""),
+      testWords,
+    });
+    setValidation(undefined);
+    setResult(undefined);
+    setDirty(true);
+    setAiPending(true);
+    onAiDraftConsumed?.(aiDraft.requestId);
+    setStatus("AI 演化草稿已填入编辑器；请验证后手动确认内容。");
+  }, [aiDraft, evolution, onAiDraftConsumed]);
+
+  useEffect(() => {
+    if (!live || !dirty || !evolution || aiPending) return;
     const timer = window.setTimeout(() => {
       void application
         .saveEvolution(evolution)
@@ -75,7 +115,19 @@ export function EvolutionWorkspace({
         .catch((reason) => setError(errorMessage(reason)));
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [application, dirty, evolution, live]);
+  }, [aiPending, application, dirty, evolution, live]);
+
+  const saveAiDraft = async () => {
+    if (!evolution || !validation?.valid) return;
+    try {
+      await application.saveEvolution(evolution);
+      setAiPending(false);
+      setDirty(false);
+      setStatus("AI 演化草稿已经验证并保存到项目。");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
 
   const inputWords = useMemo(
     () =>
@@ -102,6 +154,7 @@ export function EvolutionWorkspace({
         position,
       })),
     });
+    setValidation(undefined);
     setDirty(true);
   };
 
@@ -161,6 +214,11 @@ export function EvolutionWorkspace({
           <span><strong>Lexurgy 音变规则</strong><small>{dirty ? "正在等待自动保存" : status}</small></span>
           <div className={styles.engineActions}>
             <button onClick={() => void validate()}>验证</button>
+            {aiPending && <button
+              className={styles.primaryButton}
+              disabled={!validation?.valid}
+              onClick={() => void saveAiDraft()}
+            >验证后保存</button>}
             <button className={styles.primaryButton} disabled={!inputWords.length} onClick={() => void run()}>运行预览</button>
             <button disabled={!controller.current} onClick={() => controller.current?.abort()}>取消</button>
           </div>
@@ -176,6 +234,7 @@ export function EvolutionWorkspace({
               : undefined}
             onUpdateCode={(soundChanges) => {
               setEvolution((current) => current ? { ...current, soundChanges } : current);
+              setValidation(undefined);
               setDirty(true);
             }}
             height="100%"
@@ -239,11 +298,15 @@ export function InflectionWorkspace({
   service,
   languageId,
   live,
+  aiDraft,
+  onAiDraftConsumed,
 }: {
   application: ProjectApplication;
   service?: InflectionService;
   languageId: string;
   live: boolean;
+  aiDraft?: AiProposalDraft;
+  onAiDraftConsumed?: (requestId: string) => void;
 }) {
   const enabled = live && Boolean(service);
   const [system, setSystem] = useState<InflectionSystem | null>(null);
@@ -255,12 +318,18 @@ export function InflectionWorkspace({
   const [status, setStatus] = useState("引擎尚未启动");
   const [error, setError] = useState<string>();
   const [dirty, setDirty] = useState(false);
+  const [aiRulesText, setAiRulesText] = useState("");
+  const [aiPending, setAiPending] = useState(false);
+  const [aiPreviewed, setAiPreviewed] = useState(false);
   const controller = useRef<AbortController>();
+  const processedDraft = useRef<string>();
 
   useEffect(() => {
     setSystem(null);
     setOutputs([]);
     setDirty(false);
+    setAiPending(false);
+    setAiPreviewed(false);
     if (!enabled || !service) return;
     void Promise.all([application.getInflectionSystem(languageId), service.getEngineStatus()])
       .then(([next, engine]) => {
@@ -274,7 +343,52 @@ export function InflectionWorkspace({
   }, [application, enabled, languageId, service]);
 
   useEffect(() => {
-    if (!dirty || !system || !live) return;
+    if (
+      !system
+      || !aiDraft
+      || aiDraft.kind !== "inflection_system.update_draft"
+      || processedDraft.current === aiDraft.requestId
+    ) return;
+    processedDraft.current = aiDraft.requestId;
+    const patch = aiDraft.patch;
+    let rules: unknown;
+    try {
+      rules = normalizeInflectionRules(patch.rules ?? system.rules);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      onAiDraftConsumed?.(aiDraft.requestId);
+      return;
+    }
+    const testCases = Array.isArray(patch.testCases)
+      ? patch.testCases.map((value, position) => {
+          const item = value && typeof value === "object"
+            ? value as Record<string, unknown>
+            : {};
+          return {
+            id: uuid(),
+            stem: String(item.stem ?? ""),
+            categories: item.categories && typeof item.categories === "object"
+              ? item.categories as Record<string, string>
+              : {},
+            position,
+          };
+        }).filter((item) => item.stem)
+      : system.testCases;
+    setSystem({ ...system, rules, testCases });
+    setAiRulesText(JSON.stringify(rules, null, 2));
+    setTestText(testCases.map((item) =>
+      `${item.stem}${Object.values(item.categories).length ? ` | ${Object.values(item.categories).join(", ")}` : ""}`
+    ).join("\n"));
+    setDirty(true);
+    setAiPending(true);
+    setAiPreviewed(false);
+    setError(undefined);
+    onAiDraftConsumed?.(aiDraft.requestId);
+    setStatus("AI 屈折草稿已填入编辑器；请检查并运行预览。");
+  }, [aiDraft, onAiDraftConsumed, system]);
+
+  useEffect(() => {
+    if (!dirty || !system || !live || aiPending) return;
     const timer = window.setTimeout(() => {
       void application.saveInflectionSystem(system)
         .then(() => {
@@ -284,13 +398,26 @@ export function InflectionWorkspace({
         .catch((reason) => setError(errorMessage(reason)));
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [application, dirty, live, system]);
+  }, [aiPending, application, dirty, live, system]);
 
   if (!enabled || !service) return <EngineUnavailable kind="屈折" />;
   if (!system) return <div className={styles.engineEmpty}>正在加载屈折系统…</div>;
 
-  const rules = createRules(mode, form, category);
+  const rules = aiRulesText ? parseJsonRules(aiRulesText, system.rules) : createRules(mode, form, category);
   const testCases = parseTestCases(testText, system);
+  const saveAiDraft = async () => {
+    if (!aiPending || !aiPreviewed) return;
+    try {
+      const next = { ...system, rules, testCases };
+      await application.saveInflectionSystem(next);
+      setSystem(next);
+      setAiPending(false);
+      setDirty(false);
+      setStatus("AI 屈折草稿已经预览并保存到项目。");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
   const updateDraft = (
     nextMode = mode,
     nextForm = form,
@@ -321,6 +448,7 @@ export function InflectionWorkspace({
         ? result.inflectedForms.map(String)
         : [];
       setOutputs(values);
+      if (aiPending) setAiPreviewed(true);
       setStatus(`屈折预览完成：${values.length} 个结果`);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -339,27 +467,46 @@ export function InflectionWorkspace({
         <div className={styles.ruleComposer}>
           <label>规则类型<select value={mode} onChange={(event) => {
             const next = event.target.value as typeof mode;
-            setMode(next); updateDraft(next);
+            setAiRulesText(""); setMode(next); updateDraft(next);
           }}><option value="fixed">固定词形</option><option value="stem">仅词干</option>
             <option value="prefix">前缀 + 词干</option><option value="suffix">词干 + 后缀</option>
             <option value="branch">类别分支</option></select></label>
           {mode !== "stem" && <label>{mode === "fixed" ? "固定输出" : "拼接形式"}
-            <input value={form} onChange={(event) => { setForm(event.target.value); updateDraft(mode, event.target.value); }} />
+            <input value={form} onChange={(event) => { setAiRulesText(""); setForm(event.target.value); updateDraft(mode, event.target.value); }} />
           </label>}
           {mode === "branch" && <label>分支类别
-            <input value={category} onChange={(event) => { setCategory(event.target.value); updateDraft(mode, form, event.target.value); }} />
+            <input value={category} onChange={(event) => { setAiRulesText(""); setCategory(event.target.value); updateDraft(mode, form, event.target.value); }} />
           </label>}
-          <pre className={styles.rulePreview}>{JSON.stringify(rules, null, 2)}</pre>
+          {aiRulesText
+            ? <label className={styles.aiRuleDraft}>AI 规则 JSON
+                <textarea value={aiRulesText} onChange={(event) => {
+                  const text = event.target.value;
+                  setAiRulesText(text);
+                  setAiPreviewed(false);
+                  try {
+                    const nextRules = JSON.parse(text);
+                    setSystem((current) => current ? { ...current, rules: nextRules } : current);
+                    setDirty(true);
+                    setError(undefined);
+                  } catch {
+                    setError("AI 规则 JSON 尚未完整；修正后再运行预览。");
+                  }
+                }} />
+              </label>
+            : <pre className={styles.rulePreview}>{JSON.stringify(rules, null, 2)}</pre>}
         </div>
       </div>
       <aside className={styles.conflictPane}>
         <h2>测试词干</h2>
         <label className={styles.engineField}>每行：词干 | 类别
           <textarea value={testText} placeholder={"ama | plural\nnor"} onChange={(event) => {
-            setTestText(event.target.value); updateDraft(mode, form, category, event.target.value);
+            setTestText(event.target.value);
+            setAiPreviewed(false);
+            updateDraft(mode, form, category, event.target.value);
           }} />
         </label>
         <div className={styles.engineActions}><button className={styles.primaryButton} disabled={!testCases.length} onClick={() => void run()}>运行预览</button>
+          {aiPending && <button disabled={!aiPreviewed} onClick={() => void saveAiDraft()}>预览后保存</button>}
           <button disabled={!controller.current} onClick={() => controller.current?.abort()}>取消</button></div>
         <div className={styles.warningPanel}><InfoCircledIcon aria-hidden="true" /><div><strong>生成结果不会保存</strong><p>规则和测试输入会保存；输出可随时重新计算。</p></div></div>
       </aside>
@@ -407,6 +554,14 @@ function parseTestCases(text: string, system: InflectionSystem) {
       position,
     };
   });
+}
+
+function parseJsonRules(text: string, fallback: unknown): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
 }
 
 function EngineUnavailable({ kind }: { kind: string }) {

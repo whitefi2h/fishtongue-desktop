@@ -14,7 +14,10 @@ import {
   AiProposalKind,
   AiProviderConfig,
 } from "@/fishtongue/domain/models";
-import AiProposalService, { canonicalHash } from "./AiProposalService";
+import AiProposalService, {
+  canonicalHash,
+  normalizeProposalPatch,
+} from "./AiProposalService";
 import { v4 as uuid } from "uuid";
 
 const PRIVACY_CONSENT_VERSION = 1;
@@ -41,6 +44,23 @@ export default class AiAssistantService implements AiApplication {
   }
   listConversations(projectId: string) { return this.conversations.list(projectId); }
   loadConversation(id: string) { return this.conversations.load(id); }
+  async updateConversationModel(
+    id: string,
+    provider: AiProviderConfig,
+    modelId: string
+  ): Promise<AiConversation> {
+    const detail = await this.conversations.load(id);
+    const next: AiConversation = {
+      ...detail.conversation,
+      providerKind: provider.kind,
+      providerLabel: provider.name,
+      modelId,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.conversations.update(next);
+    await this.project.markProjectChanged();
+    return next;
+  }
 
   async saveProviderConfig(config: AiProviderConfig, secret?: string): Promise<void> {
     validateConfig(config);
@@ -117,11 +137,7 @@ export default class AiAssistantService implements AiApplication {
     };
     await this.conversations.saveUserMessage(userMessage);
     const existing = await this.conversations.load(input.conversation.id);
-    const history: Array<{ role: "system" | "user" | "assistant"; content: string }> =
-      existing.messages.slice(-20).map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
+    const history = buildConversationHistory(existing);
     history.unshift({ role: "system", content: proposalInstructions(input.ui.languageId) });
     try {
       const result = await this.providers.streamTurn({
@@ -130,7 +146,12 @@ export default class AiAssistantService implements AiApplication {
         messages: history,
         context: context.content,
       }, input.onEvent, input.signal);
-      const parsed = await parseResponse(result.content, input.ui.languageId, this.project);
+      const parsed = await parseResponse(
+        result.content,
+        input.ui.languageId,
+        this.project,
+        existing
+      );
       const message: AiMessage = {
         id: uuid(), conversationId: input.conversation.id, role: "assistant",
         content: parsed.content, status: "complete", providerKind: provider.kind,
@@ -186,14 +207,78 @@ append one JSON block exactly as:
 [{"kind":"lexeme.upsert","targetId":null,"summary":"...","patch":{}}]
 \`\`\`
 Allowed kinds: lexeme.upsert, morpheme.upsert, wordgen_profile.upsert,
-evolution.update_draft, inflection_system.update_draft. Maximum 5. Never propose deletion,
-batch acceptance, execution, or project/language changes. Current language id: ${languageId ?? "none"}.`;
+evolution.update_draft, inflection_system.update_draft. Maximum 50. Never propose deletion,
+batch acceptance, execution, or project/language changes.
+Use these patch shapes:
+lexeme: {"romanized":"","ipa":"","partOfSpeech":"","senses":[{"definition":""}]};
+morpheme: {"form":"","meaning":"","type":"root","compositionRule":{"mode":"none"}};
+wordgen: {"name":"","config":{"categories":[{"name":"C","symbols":[{"value":"p","weight":1}]}],"templates":[{"pattern":"{C}{V}","weight":1}],"syllableCounts":[{"count":2,"weight":1}],"forbiddenPatterns":[],"rewriteRules":[{"pattern":"","replacement":""}],"maxAttemptsPerCandidate":100}}. Use symbols/value, pattern and count exactly; do not use members, template, min or max;
+evolution: {"soundChanges":"Lexurgy rule text","testWords":[{"word":""}]};
+inflection: {"rules":{"type":"formula","formula":{"type":"concat","parts":[{"type":"stem"},{"type":"form","form":"n"}]}},"testCases":[{"stem":"","categories":{}}]}. Valid rule types are form, formula and split. Valid formula types are stem, form and concat. Do not use shorthand rule types such as prefix or suffix.
+For evolution soundChanges, output valid Lexurgy syntax, not linguistic pseudocode:
+- Lexurgy keywords are lowercase and case-sensitive. Write "feature voiced", never "Feature voiced(+, -)".
+- Prefer explicit symbol mappings unless every feature, value and symbol matrix is fully declared.
+- Every named change rule has a unique name followed by a colon. Comments start with #.
+- Do not use V, C or @name unless that class is declared in the same soundChanges string.
+- A safe example is:
+  class vowel {a, e, i, o, u}
+
+  final-devoicing:
+    {b, d, g} => {p, t, k} / _ $
+  intervocalic-voicing:
+    {p, t, k} => {b, d, g} / @vowel _ @vowel
+Previous FishTongue proposals embedded in assistant history are authoritative conversation memory.
+When the user asks for another, new or different proposal, compare against them and produce a materially different patch.
+Current language id: ${languageId ?? "none"}.`;
+}
+
+const PROPOSAL_HISTORY_LIMIT = 18_000;
+
+export function buildConversationHistory(
+  detail: AiConversationDetail
+): Array<{ role: "system" | "user" | "assistant"; content: string }> {
+  const messages = detail.messages.slice(-20);
+  const included = new Map<string, Array<Pick<AiProposal, "kind" | "summary" | "status" | "patch">>>();
+  let remaining = PROPOSAL_HISTORY_LIMIT;
+
+  for (const message of [...messages].reverse()) {
+    if (message.role !== "assistant" || remaining <= 0) continue;
+    const proposals = detail.proposals
+      .filter((proposal) => proposal.messageId === message.id)
+      .slice(-50)
+      .reverse();
+    const values: Array<Pick<AiProposal, "kind" | "summary" | "status" | "patch">> = [];
+    for (const proposal of proposals) {
+      const value = {
+        kind: proposal.kind,
+        summary: proposal.summary,
+        status: proposal.status,
+        patch: proposal.patch,
+      };
+      const size = JSON.stringify(value).length;
+      if (size > remaining) continue;
+      values.unshift(value);
+      remaining -= size;
+    }
+    if (values.length) included.set(message.id, values);
+  }
+
+  return messages.map((message) => {
+    const proposals = included.get(message.id);
+    return {
+      role: message.role,
+      content: proposals?.length
+        ? `${message.content}\n\n<previous-fishtongue-proposals>\n${JSON.stringify(proposals)}\n</previous-fishtongue-proposals>`
+        : message.content,
+    };
+  });
 }
 
 async function parseResponse(
   raw: string,
   languageId: string | undefined,
-  project: ProjectApplication
+  project: ProjectApplication,
+  conversation: AiConversationDetail
 ): Promise<{ content: string; proposals: Omit<AiProposal, "messageId" | "createdAt" | "updatedAt">[] }> {
   const match = raw.match(/```fishtongue-proposals\s*([\s\S]*?)```/i);
   if (!match || !languageId) return { content: raw.trim(), proposals: [] };
@@ -201,20 +286,56 @@ async function parseResponse(
   try { values = JSON.parse(match[1]); } catch { return { content: raw.trim(), proposals: [] }; }
   if (!Array.isArray(values)) return { content: raw.trim(), proposals: [] };
   const proposals = [];
-  for (const value of values.slice(0, 5)) {
+  const proposalIssues: string[] = [];
+  const existingFingerprints = new Set(
+    await Promise.all(conversation.proposals.map((proposal) =>
+      proposalFingerprint(proposal.kind, proposal.patch)
+    ))
+  );
+  for (const value of values.slice(0, 50)) {
     if (!value || typeof value !== "object") continue;
     const item = value as Record<string, unknown>;
     if (!ALLOWED_KINDS.has(item.kind as AiProposalKind) || !item.patch || typeof item.patch !== "object") continue;
     const targetId = typeof item.targetId === "string" ? item.targetId : undefined;
     const current = await targetFor(project, item.kind as AiProposalKind, languageId, targetId);
-    proposals.push({
-      id: uuid(), kind: item.kind as AiProposalKind, languageId, targetId,
-      baseSnapshotHash: current ? await canonicalHash(current) : "new",
-      patch: item.patch as Record<string, unknown>,
-      summary: String(item.summary ?? "AI 修改提案"), status: "pending" as const,
-    });
+    try {
+      const normalizedPatch = normalizeProposalPatch(
+        item.kind as AiProposalKind,
+        item.patch as Record<string, unknown>
+      );
+      const fingerprint = await proposalFingerprint(
+        item.kind as AiProposalKind,
+        normalizedPatch
+      );
+      if (existingFingerprints.has(fingerprint)) {
+        proposalIssues.push("AI 返回了与本会话先前提案完全相同的内容。");
+        continue;
+      }
+      existingFingerprints.add(fingerprint);
+      proposals.push({
+        id: uuid(), kind: item.kind as AiProposalKind, languageId, targetId,
+        baseSnapshotHash: current ? await canonicalHash(current) : "new",
+        patch: normalizedPatch,
+        summary: String(item.summary ?? "AI 修改提案"), status: "pending" as const,
+      });
+    } catch (error) {
+      proposalIssues.push(error instanceof Error ? error.message : String(error));
+    }
   }
-  return { content: raw.replace(match[0], "").trim(), proposals };
+  const content = raw.replace(match[0], "").trim();
+  return {
+    content: proposalIssues.length
+      ? `${content}\n\n${proposalIssues.length} 项提案因格式不符合 FishTongue 规则而未进入审核。`
+      : content,
+    proposals,
+  };
+}
+
+export async function proposalFingerprint(
+  kind: AiProposalKind,
+  patch: Record<string, unknown>
+): Promise<string> {
+  return `${kind}:${await canonicalHash(patch)}`;
 }
 
 async function targetFor(project: ProjectApplication, kind: AiProposalKind, languageId: string, id?: string) {

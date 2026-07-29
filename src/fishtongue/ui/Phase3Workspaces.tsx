@@ -1,5 +1,7 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
+import { normalizeWordGenerationConfig } from "@/fishtongue/application/services/AiProposalService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
 import { builtInConcepts } from "@/fishtongue/data/BuiltInConceptLists";
 import {
@@ -51,6 +53,9 @@ export function MorphemeWorkspace({
   onProjectChanged,
   onStatus,
   onOpenCandidateReview,
+  aiDraft,
+  onAiDraftConsumed,
+  refreshRequest = 0,
 }: {
   application: ProjectApplication;
   inflectionService?: InflectionService;
@@ -59,6 +64,9 @@ export function MorphemeWorkspace({
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
   onOpenCandidateReview?: () => void;
+  aiDraft?: AiProposalDraft;
+  onAiDraftConsumed?: (requestId: string) => void;
+  refreshRequest?: number;
 }) {
   const [tab, setTab] = useState<MorphologyTab>("morphemes");
   const [morphemes, setMorphemes] = useState<Morpheme[]>([]);
@@ -68,6 +76,32 @@ export function MorphemeWorkspace({
     setMorphemes(await application.listMorphemes(languageId));
   }, [application, languageId]);
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    if (refreshRequest > 0) void reload();
+  }, [refreshRequest, reload]);
+  useEffect(() => {
+    if (!aiDraft) return;
+    if (aiDraft.kind === "morpheme.upsert") {
+      const patch = aiDraft.patch;
+      const base = newMorpheme(languageId);
+      setTab("morphemes");
+      setSelected({
+        ...base,
+        form: String(patch.form ?? ""),
+        meaning: String(patch.meaning ?? ""),
+        type: isMorphemeType(patch.type) ? patch.type : "root",
+        applicablePartOfSpeech: String(patch.applicablePartOfSpeech ?? ""),
+        notes: String(patch.notes ?? ""),
+        compositionRule: patch.compositionRule && typeof patch.compositionRule === "object"
+          ? patch.compositionRule as Morpheme["compositionRule"]
+          : { mode: "none" },
+      });
+      onAiDraftConsumed?.(aiDraft.requestId);
+      onStatus("AI 语素提案已填入编辑器；请检查后手动保存。");
+    } else if (aiDraft.kind === "inflection_system.update_draft") {
+      setTab("inflection");
+    }
+  }, [aiDraft, languageId, onAiDraftConsumed, onStatus]);
 
   const save = async (draft: Morpheme) => {
     try {
@@ -100,7 +134,7 @@ export function MorphemeWorkspace({
       ["inflection", "屈折系统"],
     ]} />
     {tab === "inflection"
-      ? <InflectionWorkspace application={application} service={inflectionService} languageId={languageId} live={live} />
+      ? <InflectionWorkspace application={application} service={inflectionService} languageId={languageId} live={live} aiDraft={aiDraft} onAiDraftConsumed={onAiDraftConsumed} />
       : tab === "derivation"
         ? <DerivationPanel application={application} languageId={languageId} morphemes={morphemes} onProjectChanged={onProjectChanged} onStatus={onStatus} onOpenCandidateReview={onOpenCandidateReview} />
         : <div className={styles.phase3Split}>
@@ -298,6 +332,8 @@ export function WordGenerationWorkspace({
   onProjectChanged,
   onStatus,
   initialTab = "dictionary",
+  aiDraft,
+  onAiDraftConsumed,
 }: {
   application: ProjectApplication;
   service?: WordGenerationService;
@@ -306,11 +342,14 @@ export function WordGenerationWorkspace({
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
   initialTab?: LexiconTab;
+  aiDraft?: AiProposalDraft;
+  onAiDraftConsumed?: (requestId: string) => void;
 }) {
   const [tab, setTab] = useState<LexiconTab>(initialTab);
   const [profiles, setProfiles] = useState<WordGenerationProfile[]>([]);
   const [batches, setBatches] = useState<GenerationBatch[]>([]);
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const reload = useCallback(async () => {
     const [nextProfiles, nextBatches, nextLexemes] = await Promise.all([
       application.listWordGenerationProfiles(languageId),
@@ -333,17 +372,18 @@ export function WordGenerationWorkspace({
       ["operations", "批量记录"],
     ]} />
     {tab === "dictionary" && dictionary}
-    {tab === "profile" && <ProfileAndGenerate application={application} service={service} languageId={languageId} profiles={profiles} lexemes={lexemes} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} onReview={() => setTab("review")} />}
+    {tab === "profile" && <ProfileAndGenerate application={application} service={service} languageId={languageId} profiles={profiles} lexemes={lexemes} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} onReview={() => setTab("review")} aiDraft={aiDraft} onAiDraftConsumed={onAiDraftConsumed} />}
     {tab === "review" && <CandidateReview application={application} batches={batches} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} />}
     {tab === "operations" && <OperationHistory application={application} languageId={languageId} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} />}
   </div>;
 }
 
 function ProfileAndGenerate({
-  application, service, languageId, profiles, lexemes, reload, onProjectChanged, onStatus, onReview,
+  application, service, languageId, profiles, lexemes, reload, onProjectChanged, onStatus, onReview, aiDraft, onAiDraftConsumed,
 }: {
   application: ProjectApplication; service?: WordGenerationService; languageId: string; profiles: WordGenerationProfile[]; lexemes: Lexeme[];
   reload: () => Promise<void>; onProjectChanged: (snapshot: ProjectSnapshot) => void; onStatus: (message: string) => void; onReview: () => void;
+  aiDraft?: AiProposalDraft; onAiDraftConsumed?: (requestId: string) => void;
 }) {
   const [profileId, setProfileId] = useState("");
   const current = profiles.find((item) => item.id === profileId) ?? profiles.find((item) => item.isDefault) ?? profiles[0];
@@ -375,6 +415,24 @@ function ProfileAndGenerate({
       setMaxAttempts(current.config.maxAttemptsPerCandidate);
     }
   }, [current]);
+  useEffect(() => {
+    if (!aiDraft || aiDraft.kind !== "wordgen_profile.upsert") return;
+    const patch = aiDraft.patch;
+    const config = normalizeWordGenerationConfig(patch.config);
+    setProfileId("");
+    setName(String(patch.name ?? "AI 造词配置"));
+    setCategoriesText(formatCategories(config));
+    setTemplatesText(formatTemplates(config));
+    setSyllableCountsText(formatSyllableCounts(config));
+    setForbiddenText(Array.isArray(config.forbiddenPatterns) ? config.forbiddenPatterns.join("\n") : "");
+    setRewritesText(Array.isArray(config.rewriteRules)
+      ? config.rewriteRules.map((rule) => `${rule.pattern} => ${rule.replacement}`).join("\n")
+      : "");
+    setMaxAttempts(Number(config.maxAttemptsPerCandidate) || 100);
+    setError("");
+    onAiDraftConsumed?.(aiDraft.requestId);
+    onStatus("AI 造词配置已填入编辑器；请校验后手动保存。");
+  }, [aiDraft, onAiDraftConsumed, onStatus]);
   useEffect(() => {
     void application.listConceptLists().then(setCustomLists);
   }, [application]);
@@ -658,6 +716,10 @@ function WorkspaceTabs({ value, onChange, items }: { value: string; onChange: (v
   return <div className={styles.tabStrip} role="tablist">{items.map(([id, label]) => <button role="tab" aria-selected={value === id} data-active={value === id} key={id} onClick={() => onChange(id)}>{label}</button>)}</div>;
 }
 
+function isMorphemeType(value: unknown): value is MorphemeType {
+  return typeof value === "string" && value in typeLabels;
+}
+
 function newMorpheme(languageId: string): Morpheme {
   const now = new Date().toISOString();
   return { id: uuid(), languageId, form: "", type: "root", meaning: "", applicablePartOfSpeech: "", status: "draft", compositionRule: { mode: "none" }, notes: "", createdAt: now, updatedAt: now };
@@ -679,17 +741,20 @@ function batchStatusLabel(status: GenerationBatch["status"]): string {
 }
 
 function formatCategories(config: WordGenerationConfig): string {
-  return config.categories
+  const normalized = normalizeWordGenerationConfig(config);
+  return normalized.categories
     .map((category) => `${category.name}: ${category.symbols.map((symbol) => `${symbol.value}:${symbol.weight}`).join(", ")}`)
     .join("\n");
 }
 
 function formatTemplates(config: WordGenerationConfig): string {
-  return config.templates.map((template) => `${template.pattern}: ${template.weight}`).join("\n");
+  return normalizeWordGenerationConfig(config).templates
+    .map((template) => `${template.pattern}: ${template.weight}`).join("\n");
 }
 
 function formatSyllableCounts(config: WordGenerationConfig): string {
-  return config.syllableCounts.map((item) => `${item.count}:${item.weight}`).join(", ");
+  return normalizeWordGenerationConfig(config).syllableCounts
+    .map((item) => `${item.count}:${item.weight}`).join(", ");
 }
 
 function parseProfileFields(fields: {

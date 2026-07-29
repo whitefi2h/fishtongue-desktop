@@ -14,8 +14,14 @@ const projectSession: ProjectSession = {
 };
 
 function fakeApplication() {
-  const state: { morphemes: Morpheme[]; lexemes: Lexeme[]; batches: GenerationBatch[]; committed: number } = {
-    morphemes: [], lexemes: [], batches: [], committed: 0,
+  const state: {
+    morphemes: Morpheme[];
+    lexemes: Lexeme[];
+    batches: GenerationBatch[];
+    committed: number;
+    profileSaves: number;
+  } = {
+    morphemes: [], lexemes: [], batches: [], committed: 0, profileSaves: 0,
   };
   const snapshot = {
     session: projectSession,
@@ -29,7 +35,7 @@ function fakeApplication() {
     saveMorpheme: async (value: Morpheme) => { state.morphemes = [structuredClone(value)]; },
     deleteMorpheme: async () => { state.morphemes = []; },
     listWordGenerationProfiles: async () => [],
-    saveWordGenerationProfile: async () => {},
+    saveWordGenerationProfile: async () => { state.profileSaves += 1; },
     deleteWordGenerationProfile: async () => {},
     listGenerationBatches: async () => structuredClone(state.batches),
     createGenerationBatch: async (value: GenerationBatch) => { state.batches.push(structuredClone(value)); },
@@ -212,6 +218,101 @@ describe("Phase 3 workspaces", () => {
     cy.contains("button", "取消生成").should("be.visible").click();
     cy.contains("任务已取消").should("be.visible");
     cy.wrap(null).then(() => expect(state.batches).to.have.length(0));
+  });
+
+  it("fills a single AI lexeme proposal into the normal editor before saving", () => {
+    const { app, state } = fakeApplication();
+    cy.mount(<LexiconWorkspace
+      application={app}
+      languageId="l1"
+      createRequest={0}
+      onProjectChanged={() => {}}
+      onStatus={() => {}}
+      aiDraft={{
+        requestId: "request-lexeme",
+        proposalId: "proposal-lexeme",
+        messageId: "message",
+        kind: "lexeme.upsert",
+        patch: {
+          romanized: "kavira",
+          ipa: "/ka.vi.ra/",
+          partOfSpeech: "名词",
+          senses: [{ definition: "星星" }],
+        },
+      }}
+      onAiDraftConsumed={() => {}}
+    />);
+    cy.contains("label", "词形").find("input").should("have.value", "kavira");
+    cy.contains("label", "IPA").find("input").should("have.value", "/ka.vi.ra/");
+    cy.contains("label", "词义").find("textarea").should("have.value", "星星");
+    cy.wrap(null).then(() => expect(state.lexemes).to.have.length(0));
+    cy.get("button[form='lexeme-editor-form']").click();
+    cy.get("body").then(($body) => {
+      const alert = $body.find("[role='alert']");
+      if (alert.length) throw new Error(alert.text());
+    });
+    cy.wait(100).then(() => {
+      expect(state.lexemes).to.have.length(1);
+      expect(state.lexemes[0].romanized).to.equal("kavira");
+    });
+  });
+
+  it("fills AI morpheme and word-generation proposals into their normal forms", () => {
+    const morphemeCase = fakeApplication();
+    cy.mount(<MorphemeWorkspace
+      application={morphemeCase.app}
+      languageId="l1"
+      live
+      onProjectChanged={() => {}}
+      onStatus={() => {}}
+      aiDraft={{
+        requestId: "request-morpheme",
+        proposalId: "proposal-morpheme",
+        messageId: "message",
+        kind: "morpheme.upsert",
+        patch: { form: "na", meaning: "施事者", type: "suffix" },
+      }}
+      onAiDraftConsumed={() => {}}
+    />);
+    cy.contains("label", "形式").find("input").should("have.value", "na");
+    cy.wrap(null).then(() => expect(morphemeCase.state.morphemes).to.have.length(0));
+
+    const profileCase = fakeApplication();
+    cy.mount(<WordGenerationWorkspace
+      application={profileCase.app}
+      service={new WordGenerationService(new TestWordEngine())}
+      languageId="l1"
+      dictionary={<p>词典正文</p>}
+      initialTab="profile"
+      onProjectChanged={() => {}}
+      onStatus={() => {}}
+      aiDraft={{
+        requestId: "request-profile",
+        proposalId: "proposal-profile",
+        messageId: "message",
+        kind: "wordgen_profile.upsert",
+        patch: {
+          name: "AI 基础配置",
+          config: {
+            categories: [
+              { name: "C", members: ["p", "t"] },
+              { name: "V", members: ["a", "i"] },
+            ],
+            templates: [{ template: "C? V C?", weight: 1 }],
+            syllableCounts: [{ min: 2, max: 2, weight: 1 }],
+            forbiddenPatterns: [],
+            rewriteRules: [],
+            maxAttemptsPerCandidate: 100,
+          },
+        },
+      }}
+      onAiDraftConsumed={() => {}}
+    />);
+    cy.contains("label", "配置名称").find("input").should("have.value", "AI 基础配置");
+    cy.wrap(null).then(() => expect(profileCase.state.profileSaves).to.equal(0));
+    cy.contains("button", "验证并保存").click().then(() => {
+      expect(profileCase.state.profileSaves).to.equal(1);
+    });
   });
 });
 

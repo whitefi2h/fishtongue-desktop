@@ -18,7 +18,7 @@
   和结构化提案；AI 不得绕过现有 Service 与 Repository 写入正式数据。
 - Provider 网络访问只存在于 Rust Adapter，API Key 只存在于 Windows 凭据管理器；
   React 不获得通用 HTTP、Shell、文件系统或凭据读取能力。
-- Phase 4 数据库目标版本为 v6；项目容器格式仍为 v1。
+- Phase 4 的 AI 数据模型建立于 v6；验收修复迁移 v7 将数据库事务层的单次提案上限与应用层统一为 50。项目容器格式仍为 v1。
 
 ### AI 依赖方向与安全边界
 
@@ -34,10 +34,25 @@ AiWorkspace
 - Provider 普通设置存 Tauri Store；项目数据库只保存 Provider 名称、类型、模型快照和
   对话审计，不保存 API Key。
 - 自定义远程地址强制 HTTPS；仅 `localhost`、`127.0.0.1` 和 `::1` 可使用 HTTP。
-- `ProjectAiContextBroker` 只通过 `ProjectApplication` 读取正式数据。页面范围不自动加载
-  整个词典；语言和项目范围均实施记录数与字节数上限。
+- `ProjectAiContextBroker` 只通过 `ProjectApplication` 读取正式数据。“当前页面”包含该页面
+  已实现的正式数据：词典页含词条、造词配置和批次摘要，形态页含语素和屈折系统，
+  演化页含演化规则。页面、语言和项目范围均实施记录数与字节数上限。
 - 模型返回的提案必须匹配五类白名单。保存前 `AiProposalService` 重新计算目标规范快照哈希；
   目标改变后提案只能进入 `stale`，不得覆盖。
+- 单项词条、语素、造词、演化和屈折提案先填入对应正式编辑器，由用户修改、验证并手动保存。
+  演化草稿填入前必须调用真实 `SoundChangeService` 验证 Lexurgy 语法。
+  同一回答中的多个词条或语素提案进入高密度可编辑表格，最多 50 项；首列决定接受或拒绝，
+  提交前可以恢复选择，之后才逐项通过正式提案事务保存。保存成功必须通知当前词典或语素库
+  重新读取 Repository。
+  提案卡片必须跟随产生它的助手消息显示，不能脱离对话顺序堆在侧栏底部。
+- 单次提案数量必须在提示词、响应解析和 SQLite 原子写入三层统一为 50。流式阶段不得显示
+  `fishtongue-proposals` 原始 JSON；写入失败后必须重新读取会话、保留已经持久化的用户消息并清除“正在回答”状态。
+- Provider 提案是外部不可信数据。造词配置在进入 UI 前必须归一化为
+  `symbols/value`、`pattern`、`count`；屈折规则在进入引擎前必须归一化并校验为
+  `form`、`formula` 或 `split` 规则树。提示词约束不能代替运行时校验。
+- 下一轮 Provider 请求必须在固定字符预算内附带先前结构化提案的摘要、状态和 patch；
+  只保留自然语言正文会丢失“另一个/不同的提案”所需的会话记忆。响应解析还必须按
+  “提案类型 + 规范化 patch”阻止同一会话中的完全重复提案。
 - AI 会话写入也必须调用 `ProjectApplication.markProjectChanged()`，从而进入既有项目自动保存、
   备份和恢复流程。
 

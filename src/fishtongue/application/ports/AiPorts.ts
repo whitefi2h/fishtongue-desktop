@@ -93,6 +93,14 @@ export interface AiUiContext {
   selectedEntityId?: string;
 }
 
+export interface AiProposalDraft {
+  requestId: string;
+  proposalId: string;
+  messageId: string;
+  kind: import("@/fishtongue/domain/models").AiProposalKind;
+  patch: Record<string, unknown>;
+}
+
 export interface AiContextPackage {
   scope: AiContextScope;
   content: Record<string, unknown>;
@@ -118,6 +126,11 @@ export interface AiApplication {
   testConnection(config: AiProviderConfig, modelId: string): Promise<void>;
   listConversations(projectId: string): Promise<AiConversation[]>;
   loadConversation(id: string): Promise<AiConversationDetail>;
+  updateConversationModel(
+    id: string,
+    provider: AiProviderConfig,
+    modelId: string
+  ): Promise<AiConversation>;
   createConversation(input: {
     projectId: string;
     languageId?: string;

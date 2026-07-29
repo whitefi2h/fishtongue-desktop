@@ -121,4 +121,55 @@ describe("Phase 2 engine workspaces", () => {
     cy.contains("音变功能需要真实项目").should("be.visible");
     cy.contains("引擎不会在原型模式启动").should("be.disabled");
   });
+
+  it("fills an AI evolution proposal and waits for manual validation and save", () => {
+    const { app, state } = application();
+    cy.mount(<EvolutionWorkspace
+      application={app}
+      service={new SoundChangeService(new TestSoundEngine())}
+      languageId="l1"
+      live
+      aiDraft={{
+        requestId: "request-evolution",
+        proposalId: "proposal-evolution",
+        messageId: "message",
+        kind: "evolution.update_draft",
+        patch: { soundChanges: "Voicing:\np => b", testWords: [{ word: "apa" }] },
+      }}
+      onAiDraftConsumed={() => {}}
+    />);
+    cy.get(".cm-content").should("contain.text", "Voicing");
+    cy.wait(700).then(() => expect(state.evolutionSaves).to.equal(0));
+    cy.contains("button", "验证").click();
+    cy.contains("button", "验证后保存").click().then(() => {
+      expect(state.evolutionSaves).to.equal(1);
+    });
+  });
+
+  it("fills an AI inflection proposal and waits for preview and manual save", () => {
+    const { app, state } = application();
+    cy.mount(<InflectionWorkspace
+      application={app}
+      service={new InflectionService(new TestInflectionEngine())}
+      languageId="l1"
+      live
+      aiDraft={{
+        requestId: "request-inflection",
+        proposalId: "proposal-inflection",
+        messageId: "message",
+        kind: "inflection_system.update_draft",
+        patch: {
+          rules: { type: "suffix", form: "{stem}n" },
+          testCases: [{ stem: "ama", categories: {} }],
+        },
+      }}
+      onAiDraftConsumed={() => {}}
+    />);
+    cy.contains("AI 规则 JSON").should("be.visible");
+    cy.wait(700).then(() => expect(state.inflectionSaves).to.equal(0));
+    cy.contains("button", "运行预览").click();
+    cy.contains("button", "预览后保存").should("not.be.disabled").click().then(() => {
+      expect(state.inflectionSaves).to.equal(1);
+    });
+  });
 });

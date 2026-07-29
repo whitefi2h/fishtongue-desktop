@@ -1,14 +1,15 @@
 # FishTongue Agent Instructions
 
-## Phase 4 当前状态
+## Phase 5 当前状态
 
-- Phase 3 已通过外部 Windows 人工验收并结项；Phase 4 正在实现多模型 AI 助手。
+- Phase 4 已于 2026-07-30 通过外部 Windows 人工验收并结项；Phase 5 开始实现历史阶段、语言谱系、方言、历史事件和词源关系。
 - 正式词典、语素、造词配置、审核批次和撤销使用 Phase 3 数据模型与真实 Repository；
   数据库迁移 v4 修复候选恢复，迁移 v5 支持同一批次分次提交和逐次撤销。
 - 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
 - 候选不得绕过审核写入词典；批量提交和撤销必须保持原子性。
 - Phase 3 总验收命令是 `npm run verify:phase3`。
 - Phase 4 总验收命令是 `npm run verify:phase4`；外部人工验收前不得创建结项标签。
+- Phase 5 总验收命令规划为 `npm run verify:phase5`；外部人工验收前不得创建 Phase 5 结项标签。
 - Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
 - API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
 

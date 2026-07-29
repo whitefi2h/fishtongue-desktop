@@ -4,7 +4,10 @@ import InflectionService from "@/fishtongue/application/services/InflectionServi
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
 import { Language } from "@/fishtongue/domain/models";
-import { AiApplication } from "@/fishtongue/application/ports/AiPorts";
+import {
+  AiApplication,
+  AiProposalDraft,
+} from "@/fishtongue/application/ports/AiPorts";
 import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
 import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
@@ -176,7 +179,11 @@ export default function FishTongueDesktopApp({
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
   const [lexiconCreateRequest, setLexiconCreateRequest] = useState(0);
-  const [lexiconEntryTab, setLexiconEntryTab] = useState<"dictionary" | "review">("dictionary");
+  const [lexiconEntryTab, setLexiconEntryTab] = useState<
+    "dictionary" | "profile" | "review"
+  >("dictionary");
+  const [aiProposalDraft, setAiProposalDraft] = useState<AiProposalDraft>();
+  const [projectDataRefreshRequest, setProjectDataRefreshRequest] = useState(0);
   const closingRef = useRef(false);
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
@@ -341,7 +348,10 @@ export default function FishTongueDesktopApp({
     }
   };
 
-  const navigate = (next: WorkspaceRoute, lexiconTab: "dictionary" | "review" = "dictionary") => {
+  const navigate = (
+    next: WorkspaceRoute,
+    lexiconTab: "dictionary" | "profile" | "review" = "dictionary"
+  ) => {
     setNavOverlayOpen(false);
     if (next === "lexicon") setLexiconEntryTab(lexiconTab);
     if (next === route) return;
@@ -507,6 +517,13 @@ export default function FishTongueDesktopApp({
                 inflectionService={inflectionService}
                 wordGenerationService={wordGenerationService}
                 aiApplication={aiApplication}
+                aiProposalDraft={aiProposalDraft}
+                projectDataRefreshRequest={projectDataRefreshRequest}
+                onAiProposalConsumed={(requestId) => {
+                  setAiProposalDraft((current) =>
+                    current?.requestId === requestId ? undefined : current
+                  );
+                }}
                 lexiconCreateRequest={lexiconCreateRequest}
                 lexiconEntryTab={lexiconEntryTab}
                 onOpenCandidateReview={() => navigate("lexicon", "review")}
@@ -529,6 +546,18 @@ export default function FishTongueDesktopApp({
                   }}
                   onClose={() => setAiOpen(false)}
                   onSettings={() => navigate("ai-settings")}
+                  onDeliver={(draft) => {
+                    setAiProposalDraft(draft);
+                    if (draft.kind === "lexeme.upsert") navigate("lexicon", "dictionary");
+                    else if (draft.kind === "wordgen_profile.upsert") navigate("lexicon", "profile");
+                    else if (draft.kind === "evolution.update_draft") navigate("evolution");
+                    else navigate("morphology");
+                  }}
+                  onProjectDataChanged={() => {
+                    const current = application.getSnapshot();
+                    if (current) setSnapshot({ ...current });
+                    setProjectDataRefreshRequest((value) => value + 1);
+                  }}
                   onStatus={setMessage}
                 />
               : <PrototypeAiSidebar onClose={() => setAiOpen(false)} />)}
@@ -932,8 +961,11 @@ function PageContent(props: {
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
   aiApplication?: AiApplication;
+  aiProposalDraft?: AiProposalDraft;
+  projectDataRefreshRequest: number;
+  onAiProposalConsumed: (requestId: string) => void;
   lexiconCreateRequest: number;
-  lexiconEntryTab: "dictionary" | "review";
+  lexiconEntryTab: "dictionary" | "profile" | "review";
   onOpenCandidateReview: () => void;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
@@ -957,7 +989,7 @@ function PageContent(props: {
     case "dialects": return <DialectsPage />;
     case "phonology": return <PhonologyPage />;
     case "morphology": return props.snapshot
-      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} />
+      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} refreshRequest={props.projectDataRefreshRequest} />
       : <MorphologyPage />;
     case "lexicon": return props.snapshot
       ? <WordGenerationWorkspace
@@ -967,17 +999,22 @@ function PageContent(props: {
           onProjectChanged={props.onProjectChanged}
           onStatus={props.onStatus}
           initialTab={props.lexiconEntryTab}
+          aiDraft={props.aiProposalDraft}
+          onAiDraftConsumed={props.onAiProposalConsumed}
           dictionary={<LexiconWorkspace
             application={props.application}
             languageId={props.language.id}
             createRequest={props.lexiconCreateRequest}
             onProjectChanged={props.onProjectChanged}
             onStatus={props.onStatus}
+            aiDraft={props.aiProposalDraft}
+            onAiDraftConsumed={props.onAiProposalConsumed}
+            refreshRequest={props.projectDataRefreshRequest}
           />}
         />
       : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;
-    case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} />;
+    case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} />;
     case "contact": return <ContactPage />;
     case "translation": return <TranslationPage />;
     case "developer-tools": return <DeveloperToolsPage />;

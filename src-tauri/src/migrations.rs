@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 6;
+pub const DATABASE_SCHEMA_VERSION: u32 = 7;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -36,9 +36,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 6,
             description: "create_phase_4_ai_assistant_schema",
             sql: include_str!("../migrations/0006_phase_4_ai_assistant.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "repair_phase_4_proposal_limit",
+            sql: include_str!("../migrations/0007_phase_4_proposal_limit.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -76,6 +82,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply Phase 4 AI assistant schema");
+        sqlx::raw_sql(include_str!("../migrations/0007_phase_4_proposal_limit.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 4 proposal-limit repair");
         connection
     }
 
@@ -408,5 +418,115 @@ mod tests {
                 .map(|row| row.get::<String, _>("name")).collect();
             assert!(!columns.iter().any(|column| column.contains("secret") || column.contains("api_key")));
         }
+    }
+
+    #[tokio::test]
+    async fn schema_v7_accepts_fifty_ai_proposals_and_atomically_rejects_fifty_one() {
+        use serde_json::json;
+
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO ai_conversations VALUES (
+              'c', 'p', 'l', 'Proposal test', 'openai', 'OpenAI', 'model',
+              'language', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let proposals = |count: usize| {
+            serde_json::to_string(
+                &(0..count)
+                    .map(|index| {
+                        json!({
+                            "id": format!("proposal-{count}-{index}"),
+                            "kind": "lexeme.upsert",
+                            "languageId": "l",
+                            "targetId": null,
+                            "baseSnapshotHash": "new",
+                            "patchJson": format!(r#"{{"romanized":"word-{index}"}}"#),
+                            "summary": format!("Add word {index}")
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
+        };
+        let message = |id: &str| {
+            json!({
+                "id": id,
+                "content": "Generated proposals",
+                "status": "complete",
+                "providerKind": "openai",
+                "providerLabel": "OpenAI",
+                "modelId": "model",
+                "usageJson": "{}",
+                "createdAt": "2026-01-02T00:00:00Z"
+            })
+            .to_string()
+        };
+        let audit = |id: &str| {
+            json!({
+                "id": id,
+                "providerKind": "openai",
+                "providerLabel": "OpenAI",
+                "modelId": "model",
+                "endpointLabel": "https://api.openai.com",
+                "contextScope": "language",
+                "contextJson": "{}",
+                "referencesJson": "[]",
+                "toolCallsJson": "[]",
+                "contextBytes": 2,
+                "outcome": "complete",
+                "errorCode": null
+            })
+            .to_string()
+        };
+
+        sqlx::query("INSERT INTO ai_turn_write_commands VALUES (?1, 'c', ?2, ?3, ?4)")
+            .bind("command-50")
+            .bind(message("message-50"))
+            .bind(proposals(50))
+            .bind(audit("audit-50"))
+            .execute(&mut database)
+            .await
+            .unwrap();
+
+        let proposal_count: i64 =
+            sqlx::query("SELECT count(*) count FROM ai_proposals")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        assert_eq!(proposal_count, 50);
+
+        let result =
+            sqlx::query("INSERT INTO ai_turn_write_commands VALUES (?1, 'c', ?2, ?3, ?4)")
+                .bind("command-51")
+                .bind(message("message-51"))
+                .bind(proposals(51))
+                .bind(audit("audit-51"))
+                .execute(&mut database)
+                .await;
+        assert!(result.is_err());
+
+        let rejected_message_count: i64 =
+            sqlx::query("SELECT count(*) count FROM ai_messages WHERE id = 'message-51'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        let rejected_proposal_count: i64 =
+            sqlx::query("SELECT count(*) count FROM ai_proposals WHERE message_id = 'message-51'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        assert_eq!((rejected_message_count, rejected_proposal_count), (0, 0));
     }
 }

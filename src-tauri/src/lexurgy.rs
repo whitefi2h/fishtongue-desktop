@@ -496,9 +496,26 @@ fn send_json(
 }
 
 fn response_json(response: Response) -> Result<Value, LexurgyCommandError> {
-    response
-        .json()
-        .map_err(|error| LexurgyCommandError::new("SIDECAR_CRASHED", error.to_string()))
+    let status = response.status();
+    let body = response.text().map_err(|_| {
+        LexurgyCommandError::new("SIDECAR_CRASHED", "Lexurgy 返回内容无法读取。")
+    })?;
+    serde_json::from_str(&body).map_err(|_| {
+        let detail: String = body.trim().chars().take(200).collect();
+        let message = if detail.is_empty() {
+            "Lexurgy 返回了空响应。".to_string()
+        } else {
+            format!("Lexurgy 返回了无法解析的响应（HTTP {status}）：{detail}")
+        };
+        LexurgyCommandError::new(
+            if status.is_client_error() {
+                "INVALID_REQUEST"
+            } else {
+                "SIDECAR_CRASHED"
+            },
+            message,
+        )
+    })
 }
 
 fn absolute_job_url(endpoint: &str, job_url: &str) -> String {

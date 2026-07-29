@@ -1,4 +1,5 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import { Lexeme, Morpheme } from "@/fishtongue/domain/models";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import {
@@ -7,7 +8,7 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
 } from "@radix-ui/react-icons";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 interface LexemeDraft {
@@ -40,12 +41,18 @@ export default function LexiconWorkspace({
   createRequest,
   onProjectChanged,
   onStatus,
+  aiDraft,
+  onAiDraftConsumed,
+  refreshRequest = 0,
 }: {
   application: ProjectApplication;
   languageId: string;
   createRequest: number;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
+  aiDraft?: AiProposalDraft;
+  onAiDraftConsumed?: (requestId: string) => void;
+  refreshRequest?: number;
 }) {
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
   const [morphemeLibrary, setMorphemeLibrary] = useState<Morpheme[]>([]);
@@ -58,6 +65,7 @@ export default function LexiconWorkspace({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const handledRefreshRequest = useRef(0);
 
   const selectLexeme = useCallback((lexeme: Lexeme) => {
     setSelectedId(lexeme.id);
@@ -121,8 +129,42 @@ export default function LexiconWorkspace({
   }, [reload]);
 
   useEffect(() => {
+    if (refreshRequest <= handledRefreshRequest.current) return;
+    handledRefreshRequest.current = refreshRequest;
+    void reload(selectedId);
+  }, [refreshRequest, reload, selectedId]);
+
+  useEffect(() => {
     if (createRequest > 0) startCreating();
   }, [createRequest, startCreating]);
+
+  useEffect(() => {
+    if (loading || !aiDraft || aiDraft.kind !== "lexeme.upsert") return;
+    const patch = aiDraft.patch;
+    const senses = Array.isArray(patch.senses)
+      ? patch.senses.map((value) =>
+          value && typeof value === "object"
+            ? String((value as Record<string, unknown>).definition ?? "")
+            : String(value)
+        ).filter(Boolean).join("\n")
+      : String(patch.meaning ?? "");
+    setSelectedId(undefined);
+    setDraft({
+      ...emptyDraft,
+      romanized: String(patch.romanized ?? ""),
+      ipa: String(patch.ipa ?? ""),
+      partOfSpeech: String(patch.partOfSpeech ?? "未分类"),
+      status: ["draft", "confirmed", "deprecated"].includes(String(patch.status))
+        ? patch.status as Lexeme["status"]
+        : "draft",
+      sourceType: "manual",
+      notes: String(patch.notes ?? ""),
+      senses,
+    });
+    setError(undefined);
+    onAiDraftConsumed?.(aiDraft.requestId);
+    onStatus("AI 词条提案已填入编辑器；请检查后手动保存。");
+  }, [aiDraft, loading, onAiDraftConsumed, onStatus]);
 
   const filteredLexemes = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();

@@ -42,8 +42,22 @@ export default class ProjectAiContextBroker implements AiContextBroker {
       });
     }
 
+    if (input.scope === "page" && input.ui.languageId) {
+      Object.assign(
+        content,
+        await this.pageContext(input.ui.route, input.ui.languageId, references)
+      );
+      if (input.allowExpansion) {
+        Object.assign(content, await this.languageContext(input.ui.languageId, references));
+      }
+    }
     if (input.scope !== "page" && input.ui.languageId) {
       Object.assign(content, await this.languageContext(input.ui.languageId, references));
+    }
+    if (input.scope === "language" && input.allowExpansion) {
+      content.projectLanguages = (this.project.getSnapshot()?.languages ?? [])
+        .slice(0, MAX_RECORDS)
+        .map(({ id, name }) => ({ id, name }));
     }
     if (input.scope === "project") {
       const snapshot = this.project.getSnapshot();
@@ -73,6 +87,68 @@ export default class ProjectAiContextBroker implements AiContextBroker {
       bytes: limited.bytes,
       truncated: limited.truncated,
     };
+  }
+
+  private async pageContext(
+    route: string,
+    languageId: string,
+    references: AiContextReference[]
+  ): Promise<Record<string, unknown>> {
+    if (route === "lexicon") {
+      const [lexemes, profiles, batches] = await Promise.all([
+        this.project.listLexemes(languageId),
+        this.project.listWordGenerationProfiles(languageId),
+        this.project.listGenerationBatches(languageId),
+      ]);
+      references.push(...lexemes.slice(0, 50).map((item) => ({
+        id: item.id,
+        type: "lexeme" as const,
+        label: item.romanized,
+        detail: item.senses.map((sense) => sense.definition).join("；"),
+      })));
+      return {
+        lexemes: lexemes.slice(0, 50),
+        wordGenerationProfiles: profiles.slice(0, 20),
+        generationBatches: batches.slice(0, 20).map((batch) => ({
+          id: batch.id,
+          type: batch.type,
+          status: batch.status,
+          candidateCount: batch.candidates.length,
+        })),
+      };
+    }
+    if (route === "morphology") {
+      const [morphemes, inflection] = await Promise.all([
+        this.project.listMorphemes(languageId),
+        this.project.getInflectionSystem(languageId),
+      ]);
+      references.push(
+        ...morphemes.slice(0, 50).map((item) => ({
+          id: item.id,
+          type: "morpheme" as const,
+          label: item.form,
+          detail: item.meaning,
+        })),
+        {
+          id: inflection.id,
+          type: "inflection",
+          label: "屈折系统",
+          detail: `${inflection.testCases.length} 个测试输入`,
+        }
+      );
+      return { morphemes: morphemes.slice(0, 50), inflection };
+    }
+    if (route === "evolution") {
+      const evolution = await this.project.getEvolution(languageId);
+      references.push({
+        id: evolution.id,
+        type: "evolution",
+        label: "演化规则",
+        detail: `${evolution.testWords.length} 个测试词`,
+      });
+      return { evolution };
+    }
+    return {};
   }
 
   private async languageContext(
