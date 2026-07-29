@@ -11,9 +11,14 @@ import {
 } from "@/fishtongue/domain/models";
 import {
   MemoryEvolutionRepository,
+  MemoryConceptListRepository,
+  MemoryGenerationBatchRepository,
+  MemoryInflectionRepository,
   MemoryLanguageRepository,
   MemoryLexemeRepository,
+  MemoryMorphemeRepository,
   MemoryProjectRepository,
+  MemoryWordGenerationProfileRepository,
 } from "@/fishtongue/testing/MemoryRepositories";
 
 const session: ProjectSession = {
@@ -34,6 +39,7 @@ const session: ProjectSession = {
 class FakeFiles implements ProjectFilePort {
   dirtyMarks = 0;
   saves = 0;
+  discards = 0;
   recovery: RecoveryCandidate | null = null;
   createProject = async () => clone(session);
   openProject = async () => clone(session);
@@ -46,7 +52,7 @@ class FakeFiles implements ProjectFilePort {
   markDirty = async () => { this.dirtyMarks += 1; };
   inspectRecovery = async () => this.recovery;
   recoverProject = async () => ({ ...clone(session), requiresSaveAs: true, recovered: true });
-  discardWorkspace = async () => {};
+  discardWorkspace = async () => { this.discards += 1; };
 }
 
 class FakeDatabase implements DatabaseSessionPort {
@@ -76,6 +82,11 @@ function createService() {
     new MemoryLanguageRepository(),
     new MemoryLexemeRepository(),
     new MemoryEvolutionRepository(),
+    new MemoryInflectionRepository(),
+    new MemoryMorphemeRepository(),
+    new MemoryWordGenerationProfileRepository(),
+    new MemoryConceptListRepository(),
+    new MemoryGenerationBatchRepository(),
     new MemoryRecent()
   );
   return { service, files, database, projects };
@@ -125,5 +136,29 @@ describe("ProjectSessionService", () => {
     const { service, files } = createService();
     files.recovery = { manifest: session.manifest, sourcePath: session.sourcePath };
     await expect(service.openProject()).rejects.toThrow("请先选择");
+  });
+
+  it("removes the active workspace after a normal project close", async () => {
+    const { service, files, database } = createService();
+    await service.createProject("测试项目");
+
+    await service.closeProject();
+
+    expect(service.getSnapshot()).toBeNull();
+    expect(database.opened).toBe(false);
+    expect(files.discards).toBe(1);
+  });
+
+  it("can explicitly abandon a recovered workspace without overwriting its source", async () => {
+    const { service, files, database } = createService();
+    await service.createProject("测试项目");
+    const savesBeforeAbandon = files.saves;
+
+    await service.abandonProject();
+
+    expect(service.getSnapshot()).toBeNull();
+    expect(database.opened).toBe(false);
+    expect(files.discards).toBe(1);
+    expect(files.saves).toBe(savesBeforeAbandon);
   });
 });

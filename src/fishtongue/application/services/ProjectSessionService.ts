@@ -1,22 +1,34 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
 import {
   DatabaseSessionPort,
+  ConceptListRepository,
   EvolutionRepository,
+  GenerationBatchRepository,
+  InflectionRepository,
   LanguageRepository,
   LexemeRepository,
+  MorphemeRepository,
   ProjectFilePort,
   ProjectRepository,
   RecentProjectStore,
+  WordGenerationProfileRepository,
 } from "@/fishtongue/application/ports/ProjectPorts";
 import { requiredText } from "@/fishtongue/domain/errors";
 import {
   Evolution,
+  ConceptList,
+  GenerationBatch,
+  GenerationCandidate,
+  InflectionSystem,
   Language,
+  LexiconBatchOperation,
   Lexeme,
+  Morpheme,
   Project,
   ProjectSession,
   RecentProject,
   RecoveryCandidate,
+  WordGenerationProfile,
 } from "@/fishtongue/domain/models";
 import { v4 as uuid } from "uuid";
 
@@ -34,11 +46,20 @@ export default class ProjectSessionService implements ProjectApplication {
     private readonly languages: LanguageRepository,
     private readonly lexemes: LexemeRepository,
     private readonly evolutions: EvolutionRepository,
+    private readonly inflections: InflectionRepository,
+    private readonly morphemes: MorphemeRepository,
+    private readonly generationProfiles: WordGenerationProfileRepository,
+    private readonly conceptLists: ConceptListRepository,
+    private readonly generationBatches: GenerationBatchRepository,
     private readonly recentProjects: RecentProjectStore
   ) {}
 
   getSnapshot(): ProjectSnapshot | null {
     return this.snapshot;
+  }
+
+  async markProjectChanged(): Promise<void> {
+    await this.changed(this.requireSnapshot());
   }
 
   async createProject(name: string): Promise<ProjectSnapshot | null> {
@@ -94,6 +115,14 @@ export default class ProjectSessionService implements ProjectApplication {
         throw new Error("项目尚未保存，已取消关闭。");
       }
     }
+    await this.saveQueue;
+    await this.database.close();
+    await this.files.discardWorkspace();
+    this.snapshot = null;
+  }
+
+  async abandonProject(): Promise<void> {
+    this.cancelAutoSave();
     await this.saveQueue;
     await this.database.close();
     await this.files.discardWorkspace();
@@ -187,7 +216,12 @@ export default class ProjectSessionService implements ProjectApplication {
     await this.lexemes.save({
       ...lexeme,
       romanized,
+      ipa: lexeme.ipa.trim(),
+      status: lexeme.status ?? "draft",
+      sourceType: lexeme.sourceType ?? "manual",
+      notes: lexeme.notes.trim(),
       senses,
+      morphemes: lexeme.morphemes.map((value, position) => ({ ...value, position })),
       updatedAt: new Date().toISOString(),
     });
     await this.changed(this.requireSnapshot());
@@ -212,6 +246,193 @@ export default class ProjectSessionService implements ProjectApplication {
       testWords: evolution.testWords.map((word, position) => ({
         ...word,
         word: word.word.trim(),
+        position,
+      })),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  listMorphemes(languageId: string): Promise<Morpheme[]> {
+    this.requireSnapshot();
+    return this.morphemes.list(languageId);
+  }
+
+  async saveMorpheme(value: Morpheme): Promise<void> {
+    this.requireSnapshot();
+    await this.morphemes.save({
+      ...value,
+      form: requiredText(value.form, "语素形式"),
+      meaning: requiredText(value.meaning, "语素含义"),
+      applicablePartOfSpeech: value.applicablePartOfSpeech.trim(),
+      notes: value.notes.trim(),
+      updatedAt: new Date().toISOString(),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  async deleteMorpheme(id: string): Promise<void> {
+    this.requireSnapshot();
+    await this.morphemes.delete(id);
+    await this.changed(this.requireSnapshot());
+  }
+
+  listWordGenerationProfiles(languageId: string): Promise<WordGenerationProfile[]> {
+    this.requireSnapshot();
+    return this.generationProfiles.list(languageId);
+  }
+
+  async saveWordGenerationProfile(value: WordGenerationProfile): Promise<void> {
+    this.requireSnapshot();
+    await this.generationProfiles.save({
+      ...value,
+      name: requiredText(value.name, "造词配置名称"),
+      configVersion: "wordgen-profile-v1",
+      updatedAt: new Date().toISOString(),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  async deleteWordGenerationProfile(id: string): Promise<void> {
+    this.requireSnapshot();
+    await this.generationProfiles.delete(id);
+    await this.changed(this.requireSnapshot());
+  }
+
+  listConceptLists(): Promise<ConceptList[]> {
+    const current = this.requireSnapshot();
+    return this.conceptLists.list(current.project.id);
+  }
+
+  async saveConceptList(value: ConceptList): Promise<void> {
+    const current = this.requireSnapshot();
+    if (value.readonly) throw new Error("内置概念表不能修改。");
+    await this.conceptLists.save({
+      ...value,
+      projectId: current.project.id,
+      name: requiredText(value.name, "概念表名称"),
+      concepts: value.concepts.map((concept, position) => ({
+        ...concept,
+        gloss: requiredText(concept.gloss, "概念"),
+        position,
+      })),
+      updatedAt: new Date().toISOString(),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  async deleteConceptList(id: string): Promise<void> {
+    this.requireSnapshot();
+    await this.conceptLists.delete(id);
+    await this.changed(this.requireSnapshot());
+  }
+
+  listGenerationBatches(languageId: string): Promise<GenerationBatch[]> {
+    this.requireSnapshot();
+    return this.generationBatches.list(languageId);
+  }
+
+  async createGenerationBatch(value: GenerationBatch): Promise<void> {
+    this.requireSnapshot();
+    if (!value.candidates.length) throw new Error("没有可审核的候选。");
+    await this.generationBatches.create(value);
+    await this.changed(this.requireSnapshot());
+  }
+
+  async saveGenerationCandidate(
+    batchId: string,
+    value: GenerationCandidate
+  ): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    const lexemes = await this.lexemes.list(batch.languageId);
+    const folded = value.romanized.trim().normalize("NFC").toLocaleLowerCase();
+    const conflicts: GenerationCandidate["conflicts"] = [];
+    if (lexemes.some((lexeme) =>
+      lexeme.romanized.normalize("NFC").toLocaleLowerCase() === folded
+    )) {
+      conflicts.push({ code: "DUPLICATE_LEXEME", message: "词典中已有相同词形。" });
+    }
+    if (batch.candidates.some((candidate) =>
+      candidate.id !== value.id &&
+      candidate.romanized.normalize("NFC").toLocaleLowerCase() === folded
+    )) {
+      conflicts.push({ code: "DUPLICATE_CANDIDATE", message: "本批次中存在相同词形。" });
+    }
+    await this.generationBatches.saveCandidate(batchId, {
+      ...value,
+      conflicts,
+      gloss: requiredText(value.gloss, "候选释义"),
+      romanized: requiredText(value.romanized, "候选词形"),
+    });
+    await this.changed(this.requireSnapshot());
+  }
+
+  async saveGenerationCandidates(
+    batchId: string,
+    values: GenerationCandidate[]
+  ): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    const editableIds = new Set(
+      batch.candidates
+        .filter((candidate) => candidate.status !== "committed")
+        .map((candidate) => candidate.id)
+    );
+    if (values.some((candidate) => !editableIds.has(candidate.id))) {
+      throw new Error("已提交候选不能再次修改。");
+    }
+    await this.generationBatches.saveCandidates(batchId, values);
+    await this.changed(this.requireSnapshot());
+  }
+
+  async commitGenerationBatch(batchId: string): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    const accepted = batch.candidates.filter((candidate) => candidate.status === "accepted");
+    if (!accepted.length) throw new Error("至少接受一个候选后才能提交。");
+    if (accepted.some((candidate) => candidate.conflicts.length > 0)) {
+      throw new Error("已接受候选中仍有冲突，请先修改词形或取消接受。");
+    }
+    await this.generationBatches.commit(batchId, uuid(), new Date().toISOString());
+    await this.changed(this.requireSnapshot());
+  }
+
+  async dismissGenerationBatch(batchId: string): Promise<void> {
+    this.requireSnapshot();
+    const batch = await this.generationBatches.get(batchId);
+    if (!batch) throw new Error("审核批次不存在。");
+    await this.generationBatches.dismiss(batchId, new Date().toISOString());
+    await this.changed(this.requireSnapshot());
+  }
+
+  listLexiconBatchOperations(languageId: string): Promise<LexiconBatchOperation[]> {
+    this.requireSnapshot();
+    return this.generationBatches.listOperations(languageId);
+  }
+
+  async undoLexiconBatchOperation(operationId: string): Promise<void> {
+    this.requireSnapshot();
+    await this.generationBatches.undo(operationId, new Date().toISOString());
+    await this.changed(this.requireSnapshot());
+  }
+
+  getInflectionSystem(languageId: string): Promise<InflectionSystem> {
+    this.requireSnapshot();
+    return this.inflections.getOrCreate(languageId);
+  }
+
+  async saveInflectionSystem(system: InflectionSystem): Promise<void> {
+    this.requireSnapshot();
+    await this.inflections.save({
+      ...system,
+      rulesVersion: 1,
+      updatedAt: new Date().toISOString(),
+      testCases: system.testCases.map((testCase, position) => ({
+        ...testCase,
+        stem: requiredText(testCase.stem, "词干"),
         position,
       })),
     });

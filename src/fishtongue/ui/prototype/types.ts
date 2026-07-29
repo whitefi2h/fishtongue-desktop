@@ -20,6 +20,7 @@ export type WorkspaceRoute =
   | "contact"
   | "translation"
   | "developer-tools"
+  | "ai-settings"
   | "map"
   | "reconstruction"
   | "unsafe-scripting"

@@ -1,10 +1,42 @@
 # FishTongue Desktop
 
+## Phase 4 结项状态（2026-07-30）
+
+Phase 3 已通过干净 Windows 外部人工验收并正式结项。Phase 4 的 AI 数据模型位于
+Schema v6，人工验收修复迁移 v7 将单次回答的提案上限安全扩展到 50；它在既有扩展词条、独立词义、语素、造词配置、自定义概念表和候选审核批次
+之外，增加 AI 会话、结构化提案和上下文审计。
+人工验收补丁迁移 v5 允许一个审核批次分多次提交，每次提交都会形成可独立撤销的操作记录。
+Lexurgy Sidecar 协议已升级为 v2，并加入固定 SplitMix64 v1 种子的离线确定性造词。
+候选只有经用户接受后才会以原子事务写入词典；最近的 Phase 3 批量提交可以安全撤销，
+但提交后被人工修改的词条会阻止整次撤销。
+
+自动总验收命令为：
+
+```powershell
+npm run verify:phase4
+```
+
+Phase 4 已通过外部 Windows 人工验收并正式结项。已实现多模型 AI 助手、安全上下文读取和结构化提案审核；
+侧栏可切换已启用的服务商与模型，提案先进入对应正式编辑器或批量审核窗口，再由用户确认保存。
+批量词条/语素提案最多 50 项，以双主题可编辑表格选择接受或拒绝，并在保存后立即刷新当前
+工作区。造词、演化和屈折提案在进入编辑器或引擎前会执行格式转换与严格校验，模型返回的
+别名、简写或无效 Lexurgy 规则不会直接进入正式数据链路；后续对话也会在受限预算内读取本
+会话先前提案，避免把“另一个提案”重复生成为相同内容。
+AI 是可选能力；
+未配置模型或断网时，项目、词典、造词、演化和屈折仍须正常工作。Phase 5 的词源、
+历史阶段和谱系能力仍未实现。
+
+人工验收提出的 IPA 音位选点、演化词典筛选、候选冲突处理和面向语言学新手的
+离线 `⍰` 帮助要求，统一记录在
+[`docs/product-follow-up-requirements.md`](docs/product-follow-up-requirements.md)。
+
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：Phase 0 和 Phase 1 已通过验收。项目先进入 Phase 1.5，按新的
-> UI/UX 与功能信息架构重构桌面体验；Lexurgy Sidecar 仍计划在 Phase 2 实现。
-> 设计方案中的页面骨架和后续功能入口不代表相应能力已经实现。
+> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2 和 Phase 3 已通过验收。Phase 2 已交付
+> Lexurgy Sidecar、音变预览、屈折预览和 Schema v2，并通过无系统 Java 的外部
+> Windows 验收。Phase 3 已交付正式词典、语素、确定性造词、候选审核、批量提交
+> 和安全撤销。Phase 4 已交付可选的多模型 AI 助手与安全提案系统。
+> 其他设计原型入口不代表相应能力已经实现。
 
 ## 最终用户体验
 
@@ -112,7 +144,7 @@ Next.js 必须使用静态导出，构建结果由 Tauri 加载。以下能力�
 
 ## SQLite 数据层
 
-SQLite 是正式项目数据的唯一权威来源。推荐的数据访问链路是：
+SQLite 是正式项目数据的唯一权威来源。正式数据访问链路是：
 
 ```text
 React UI → Service → Repository → Tauri SQL Plugin → SQLite
@@ -120,7 +152,9 @@ React UI → Service → Repository → Tauri SQL Plugin → SQLite
 
 React 页面不得直接执行 SQL。数据访问层负责业务查询、事务、迁移和错误处理。
 
-计划中的主要表包括 `projects`、`languages`、`language_stages`、`lexemes`、`senses`、`morphemes`、`linguistic_rules`、`evolutions`、`historical_events`、`etymology_relations`、`generation_batches`、`candidate_items`、`reference_profiles`、`versions` 和 `settings`。
+当前已验收的 Schema v2 持久化项目、语言、词条、独立 Sense、Evolution、屈折规则
+和屈折测试输入。Phase 3 将升级至 Schema v3，加入词典扩展字段、语素、造词配置、
+概念表、候选审核和批量操作记录。语言阶段、词源和历史事件仍属后续阶段。
 
 原 Neo4j 图关系改为外键或关系表。例如：
 
@@ -132,17 +166,20 @@ React 页面不得直接执行 SQL。数据访问层负责业务查询、事务�
 
 ## Lexurgy Sidecar
 
-Lexurgy 继续使用 Kotlin/JVM，不移植到 Rust。推荐采用常驻本地 API：
+Lexurgy 继续使用 Kotlin/JVM，不移植到 Rust。Phase 2 已实现按需启动的本地 API：
 
 ```text
-FishTongue 启动
-→ Tauri 启动 Lexurgy Sidecar
+FishTongue 启动（此时不启动 Java）
+→ 首次进入真实演化或屈折功能时由 Tauri 启动 Lexurgy Sidecar
 → Lexurgy 监听 127.0.0.1 随机端口
 → 前端通过 Tauri 调用 scv1、validate、poll 和 inflectv1
 → FishTongue 退出时关闭 Sidecar
 ```
 
-第一阶段随安装包携带最小 Java 运行环境。用户无需自行安装 Java，也不应看到或管理 Lexurgy 进程。
+安装包携带由 Eclipse Temurin 21 生成的精简 Java 运行环境。每次启动使用新的
+256 位认证令牌；React 无 HTTP、Shell 或进程权限。音变与屈折结果只存在内存，
+不会写回词典或创建语言阶段。锁定版本和哈希见
+[`engine/engine-lock.json`](engine/engine-lock.json)。
 
 ## Analysis Sidecar
 
@@ -238,6 +275,11 @@ Phase 1.5 的完整设计基线和文档冲突处理结果见
 [`docs/phase-1-5-ui-ux-design-spec.md`](docs/phase-1-5-ui-ux-design-spec.md) 和
 [`docs/phase-1-5/document-alignment-report.md`](docs/phase-1-5/document-alignment-report.md)。
 
+Phase 2 的实施清单、自动验收证据和干净 Windows 人工验收步骤见
+[`docs/phase-2-development-plan.md`](docs/phase-2-development-plan.md)、
+[`docs/phase-2/acceptance-report.md`](docs/phase-2/acceptance-report.md) 和
+[`docs/phase-2/manual-acceptance-guide.md`](docs/phase-2/manual-acceptance-guide.md)。
+
 - [x] Fork Lexurgy App 并建立 `fishtongue-desktop`；
 - [x] 加入 Tauri 2；
 - [x] 将现有 `/sc` 页面改造为可静态导出的桌面编辑器切片；
@@ -255,6 +297,11 @@ Phase 1.5 的完整设计基线和文档冲突处理结果见
 - [x] `frontend-design` 已完成 Phase 1.5 自定义窗口、桌面工作区和高保真页面原型。
 - [x] `emil-design-eng` 已完成 Phase 1.5 交互精修、层级调整和两轮响应式问题修复。
 - [x] `web-design-guidelines` 已完成 Phase 1.5 最终验收与无障碍修复。
+- [x] 建立独立 `fishtongue-engine` 仓库、认证协议、精简 JRE 和可校验发布资产。
+- [x] 实现 Rust Sidecar Supervisor、启动/超时/取消/退出清理和日志轮换。
+- [x] 实现 Schema v2、真实音变工作区、真实屈折工作区和只读结果预览。
+- [x] 建立 `npm run verify:phase2` 自动总验收。
+- [ ] 完成无 Java 的干净 Windows 外部人工验收并正式结项 Phase 2。
 
 交互精修的变更说明、截图和测试证据见
 [`docs/phase-1-5/emil-design-engineering-report.md`](docs/phase-1-5/emil-design-engineering-report.md)。
@@ -263,7 +310,7 @@ Phase 1.5 的完整设计基线和文档冲突处理结果见
 最终 Web Interface Guidelines 验收结果见
 [`docs/phase-1-5/web-design-guidelines-acceptance-report.md`](docs/phase-1-5/web-design-guidelines-acceptance-report.md)。
 
-Phase 1 已完成验收。Phase 2 在 Phase 1.5 之后实施，并继续遵循
+Phase 1.5 已完成验收。Phase 2 实施继续遵循
 `UI → Service → Repository →
 Tauri SQL Plugin → SQLite` 数据链路；不得恢复 Neo4j 主数据源，
 也不得重写 Lexurgy 核心。

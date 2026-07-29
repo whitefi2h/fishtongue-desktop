@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FishTongue",
-  "version": "0.1.0-phase.1",
+  "version": "0.4.0-phase.4",
   "identifier": "com.fishtongue.desktop",
   "build": {
     "frontendDist": "../out",
@@ -33,6 +33,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": [
+      "resources/lexurgy/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

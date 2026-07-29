@@ -1,5 +1,17 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import InflectionService from "@/fishtongue/application/services/InflectionService";
+import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
+import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
+import { Language } from "@/fishtongue/domain/models";
+import {
+  AiApplication,
+  AiProposalDraft,
+} from "@/fishtongue/application/ports/AiPorts";
+import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
+import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
+import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
+import { AiSettingsPage, AiSidebar as LiveAiSidebar } from "@/fishtongue/ui/AiWorkspace";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -64,8 +76,30 @@ import {
   useState,
 } from "react";
 
-type DialogKind = "new-project" | "new-language" | "planned" | "search" | null;
+type DialogKind =
+  | "new-project"
+  | "new-language"
+  | "planned"
+  | "search"
+  | "lexurgy-help"
+  | "save-before-exit"
+  | null;
 type AppMode = "welcome" | "workspace";
+
+function toPrototypeLanguage(language: Language): PrototypeLanguage {
+  return {
+    id: language.id,
+    name: language.name,
+    nativeName: language.name,
+    family: "项目语言",
+    era: "未设置",
+    region: "未设置",
+    status: "真实项目数据",
+    words: 0,
+    warnings: 0,
+    stages: [],
+  };
+}
 
 const icons: Partial<Record<WorkspaceRoute, ElementType>> = {
   "project-home": HomeIcon,
@@ -85,6 +119,7 @@ const icons: Partial<Record<WorkspaceRoute, ElementType>> = {
   contact: GlobeIcon,
   translation: ColumnsIcon,
   "developer-tools": CodeIcon,
+  "ai-settings": GearIcon,
 };
 
 const menus = [
@@ -93,8 +128,8 @@ const menus = [
   { label: "视图", items: [["项目主页", "", "project-home"], ["语言谱系", "", "genealogy"], ["切换导航栏", "", "toggle-nav"], ["切换 AI", "", "toggle-ai"], ["切换主题", "", "toggle-theme"]] },
   { label: "项目", items: [["项目属性", "", "project-settings"], ["新建语言", "", "new-language"], ["导入语言", "", "planned"], ["历史事件", "", "events"], ["项目诊断", "", "planned"]] },
   { label: "语言", items: [["语言属性", "", "language-properties"], ["阶段管理", "", "stages"], ["方言管理", "", "dialects"], ["创建下一阶段", "", "planned"], ["验证语言", "", "planned"]] },
-  { label: "工具", items: [["IPA 工具", "", "phonology"], ["音变规则测试器", "", "evolution"], ["批量导入", "", "planned"], ["开发者工具", "", "developer-tools"], ["AI 与模型设置", "", "planned"]] },
-  { label: "帮助", items: [["使用手册", "F1", "planned"], ["快捷键", "", "planned"], ["语言学术语", "", "planned"], ["Lexurgy 规则文档", "", "planned"], ["关于 FishTongue", "", "planned"]] },
+  { label: "工具", items: [["IPA 工具", "", "phonology"], ["音变规则测试器", "", "evolution"], ["批量导入", "", "planned"], ["开发者工具", "", "developer-tools"], ["AI 与模型设置", "", "ai-settings"]] },
+  { label: "帮助", items: [["Lexurgy 规则快速参考", "F1", "lexurgy-help"], ["快捷键", "", "planned"], ["语言学术术语", "", "planned"], ["关于 FishTongue", "", "planned"]] },
 ] as const;
 
 const englishMenus = [
@@ -103,16 +138,24 @@ const englishMenus = [
   { label: "View", items: [["Project home", "", "project-home"], ["Language family", "", "genealogy"], ["Toggle navigation", "", "toggle-nav"], ["Toggle AI", "", "toggle-ai"], ["Switch theme", "", "toggle-theme"]] },
   { label: "Project", items: [["Project properties", "", "project-settings"], ["New language", "", "new-language"], ["Import language", "", "planned"], ["Historical events", "", "events"], ["Project diagnostics", "", "planned"]] },
   { label: "Language", items: [["Language properties", "", "language-properties"], ["Manage stages", "", "stages"], ["Manage dialects", "", "dialects"], ["Create next stage", "", "planned"], ["Validate language", "", "planned"]] },
-  { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "planned"]] },
-  { label: "Help", items: [["User guide", "F1", "planned"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["Lexurgy rule reference", "", "planned"], ["About FishTongue", "", "planned"]] },
+  { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "ai-settings"]] },
+  { label: "Help", items: [["Lexurgy quick reference", "F1", "lexurgy-help"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["About FishTongue", "", "planned"]] },
 ] as const;
 
 export default function FishTongueDesktopApp({
   application,
   windowPort,
+  soundChangeService,
+  inflectionService,
+  wordGenerationService,
+  aiApplication,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
+  soundChangeService?: SoundChangeService;
+  inflectionService?: InflectionService;
+  wordGenerationService?: WordGenerationService;
+  aiApplication?: AiApplication;
 }) {
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -135,9 +178,41 @@ export default function FishTongueDesktopApp({
   const [message, setMessage] = useState("本地设计原型 · 不会写入项目");
   const [recent, setRecent] = useState<{ name: string; path: string }[]>([]);
   const [recoveryName, setRecoveryName] = useState<string>();
+  const [lexiconCreateRequest, setLexiconCreateRequest] = useState(0);
+  const [lexiconEntryTab, setLexiconEntryTab] = useState<
+    "dictionary" | "profile" | "review"
+  >("dictionary");
+  const [aiProposalDraft, setAiProposalDraft] = useState<AiProposalDraft>();
+  const [projectDataRefreshRequest, setProjectDataRefreshRequest] = useState(0);
+  const closingRef = useRef(false);
   const currentRoute = routesById[route];
+  const workspaceLanguages = useMemo(
+    () => snapshot
+      ? snapshot.languages.map(toPrototypeLanguage)
+      : prototypeProject.languages,
+    [snapshot]
+  );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
+
+  const requestClose = useCallback(async () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    try {
+      const current = application.getSnapshot();
+      if (current?.session.requiresSaveAs) {
+        closingRef.current = false;
+        setDialog("save-before-exit");
+        return;
+      }
+      if (current) await application.closeProject();
+      setSnapshot(null);
+      await windowPort.close();
+    } catch (reason) {
+      closingRef.current = false;
+      setMessage(`无法安全退出：${errorMessage(reason)}`);
+    }
+  }, [application, windowPort]);
 
   useEffect(() => {
     void Promise.all([application.listRecentProjects(), application.inspectRecovery()])
@@ -155,6 +230,14 @@ export default function FishTongueDesktopApp({
     });
     return () => cleanup();
   }, [windowPort]);
+
+  useEffect(() => {
+    let cleanup: () => void = () => undefined;
+    void windowPort.subscribeCloseRequested(requestClose).then((value) => {
+      cleanup = value;
+    });
+    return () => cleanup();
+  }, [requestClose, windowPort]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -185,6 +268,10 @@ export default function FishTongueDesktopApp({
         event.preventDefault();
         goBack();
       }
+      if (event.key === "F1") {
+        event.preventDefault();
+        setDialog("lexurgy-help");
+      }
       if (event.key === "Escape" && navOverlayOpen) {
         event.preventDefault();
         setNavOverlayOpen(false);
@@ -207,7 +294,13 @@ export default function FishTongueDesktopApp({
   });
 
   const enterWorkspace = (next?: ProjectSnapshot | null) => {
-    if (next) setSnapshot(next);
+    if (next) {
+      setSnapshot(next);
+      if (next.languages[0]) {
+        setSelectedLanguage(toPrototypeLanguage(next.languages[0]));
+        setSelectedStage(undefined);
+      }
+    }
     setMode("workspace");
     setRouteHistory([]);
     setRoute("project-home");
@@ -216,9 +309,27 @@ export default function FishTongueDesktopApp({
 
   const openProject = async (path?: string) => {
     try {
-      enterWorkspace(await application.openProject(path));
-    } catch {
-      setMessage("无法打开项目。请检查文件位置或选择其他项目。");
+      const next = await application.openProject(path);
+      if (!next) {
+        setMessage("已取消打开项目。");
+        return;
+      }
+      enterWorkspace(next);
+    } catch (reason) {
+      setMessage(`无法打开项目：${errorMessage(reason)}`);
+    }
+  };
+
+  const importProject = async () => {
+    try {
+      const next = await application.importProject();
+      if (!next) {
+        setMessage("已取消导入项目。");
+        return;
+      }
+      enterWorkspace(next);
+    } catch (reason) {
+      setMessage(`项目导入失败：${errorMessage(reason)}`);
     }
   };
 
@@ -237,8 +348,12 @@ export default function FishTongueDesktopApp({
     }
   };
 
-  const navigate = (next: WorkspaceRoute) => {
+  const navigate = (
+    next: WorkspaceRoute,
+    lexiconTab: "dictionary" | "profile" | "review" = "dictionary"
+  ) => {
     setNavOverlayOpen(false);
+    if (next === "lexicon") setLexiconEntryTab(lexiconTab);
     if (next === route) return;
     setRouteHistory((history) => [...history.slice(-19), route]);
     setRoute(next);
@@ -272,6 +387,7 @@ export default function FishTongueDesktopApp({
     if (id === "save-as") return void saveProject(true);
     if (id === "new-language") return setDialog("new-language");
     if (id === "search") return setDialog("search");
+    if (id === "lexurgy-help") return setDialog("lexurgy-help");
     if (id === "toggle-nav") return toggleNavigation();
     if (id === "toggle-ai") return setAiOpen((value) => !value);
     if (id === "toggle-theme") return setTheme((value) => value === "light" ? "dark" : "light");
@@ -281,7 +397,7 @@ export default function FishTongueDesktopApp({
       setMode("welcome");
       return;
     }
-    if (id === "quit") return void windowPort.close();
+    if (id === "quit") return void requestClose();
     setPlannedTitle("此操作将在后续阶段开放");
     setDialog("planned");
   };
@@ -302,6 +418,7 @@ export default function FishTongueDesktopApp({
         dirty={Boolean(snapshot?.dirty)}
         state={windowState}
         windowPort={windowPort}
+        onClose={() => void requestClose()}
       />
       <MenuBar locale={locale} onCommand={(id) => void command(id)} />
       {mode === "welcome" ? (
@@ -311,8 +428,12 @@ export default function FishTongueDesktopApp({
           onPreview={() => enterWorkspace()}
           onOpen={(path) => void openProject(path)}
           onCreate={() => setDialog("new-project")}
-          onImport={() => void application.importProject().then(enterWorkspace).catch(() => setMessage("项目导入失败。"))}
+          onImport={() => void importProject()}
           onRecover={() => void application.recoverProject().then(enterWorkspace).catch(() => setMessage("项目恢复失败。"))}
+          onDiscardRecovery={() => void application.discardRecovery().then(() => {
+            setRecoveryName(undefined);
+            setMessage("已丢弃异常退出留下的工作区；原项目文件未受影响。");
+          }).catch((reason) => setMessage(`无法丢弃恢复工作区：${errorMessage(reason)}`))}
           message={message}
         />
       ) : (
@@ -320,7 +441,7 @@ export default function FishTongueDesktopApp({
           <ContextToolbar
             project={projectName}
             level={workspaceLevel}
-            languages={prototypeProject.languages}
+            languages={workspaceLanguages}
             language={selectedLanguage}
             stage={selectedStage}
             page={pageTitle}
@@ -357,13 +478,25 @@ export default function FishTongueDesktopApp({
               route={route}
               level={workspaceLevel}
               language={selectedLanguage}
+              project={projectName}
               locale={locale}
               onNavigate={navigate}
               onCollapse={toggleNavigation}
             />
             <main id="main-workspace" className={styles.mainWorkspace} tabIndex={-1}>
-              <PreviewBanner locale={locale} />
-              <PageHeader route={route} locale={locale} onCreate={() => setDialog("new-language")} />
+              <PreviewBanner locale={locale} live={Boolean(snapshot)} />
+              <PageHeader
+                route={route}
+                locale={locale}
+                live={Boolean(snapshot)}
+                onCreate={() => {
+                  if (route === "lexicon" && snapshot) {
+                    setLexiconCreateRequest((value) => value + 1);
+                    return;
+                  }
+                  setDialog("new-language");
+                }}
+              />
               <PageContent
                 route={route}
                 language={selectedLanguage}
@@ -378,9 +511,56 @@ export default function FishTongueDesktopApp({
                   setPlannedTitle(title);
                   setDialog("planned");
                 }}
+                application={application}
+                snapshot={snapshot}
+                soundChangeService={soundChangeService}
+                inflectionService={inflectionService}
+                wordGenerationService={wordGenerationService}
+                aiApplication={aiApplication}
+                aiProposalDraft={aiProposalDraft}
+                projectDataRefreshRequest={projectDataRefreshRequest}
+                onAiProposalConsumed={(requestId) => {
+                  setAiProposalDraft((current) =>
+                    current?.requestId === requestId ? undefined : current
+                  );
+                }}
+                lexiconCreateRequest={lexiconCreateRequest}
+                lexiconEntryTab={lexiconEntryTab}
+                onOpenCandidateReview={() => navigate("lexicon", "review")}
+                onProjectChanged={(next) => setSnapshot({ ...next })}
+                onStatus={setMessage}
+                onCreateLanguage={() => setDialog("new-language")}
               />
             </main>
-            {aiOpen && <AiSidebar onClose={() => setAiOpen(false)} />}
+            {aiOpen && (aiApplication
+              ? <LiveAiSidebar
+                  ai={aiApplication}
+                  live={Boolean(snapshot)}
+                  context={{
+                    route,
+                    pageTitle,
+                    projectId: snapshot?.project.id ?? prototypeProject.id,
+                    projectName,
+                    languageId: workspaceLevel === "language" && snapshot ? selectedLanguage.id : undefined,
+                    languageName: workspaceLevel === "language" ? selectedLanguage.name : undefined,
+                  }}
+                  onClose={() => setAiOpen(false)}
+                  onSettings={() => navigate("ai-settings")}
+                  onDeliver={(draft) => {
+                    setAiProposalDraft(draft);
+                    if (draft.kind === "lexeme.upsert") navigate("lexicon", "dictionary");
+                    else if (draft.kind === "wordgen_profile.upsert") navigate("lexicon", "profile");
+                    else if (draft.kind === "evolution.update_draft") navigate("evolution");
+                    else navigate("morphology");
+                  }}
+                  onProjectDataChanged={() => {
+                    const current = application.getSnapshot();
+                    if (current) setSnapshot({ ...current });
+                    setProjectDataRefreshRequest((value) => value + 1);
+                  }}
+                  onStatus={setMessage}
+                />
+              : <PrototypeAiSidebar onClose={() => setAiOpen(false)} />)}
           </div>
           <StatusBar snapshot={snapshot} level={workspaceLevel} language={selectedLanguage} stage={selectedStage?.name} message={message} />
         </div>
@@ -389,12 +569,40 @@ export default function FishTongueDesktopApp({
         kind={dialog}
         plannedTitle={plannedTitle}
         onClose={() => setDialog(null)}
+        onSaveBeforeExit={async () => {
+          const saved = await application.saveProjectAs();
+          if (!saved) return;
+          await application.closeProject();
+          setSnapshot(null);
+          setDialog(null);
+          await windowPort.close();
+        }}
+        onAbandonAndExit={async () => {
+          await application.abandonProject();
+          setSnapshot(null);
+          setDialog(null);
+          await windowPort.close();
+        }}
         onCreateProject={async (name) => {
           const next = await application.createProject(name);
+          if (!next) {
+            throw new Error("已取消选择保存位置，项目没有创建。");
+          }
           setDialog(null);
           enterWorkspace(next);
         }}
-        onCreateLanguage={(name) => {
+        onCreateLanguage={async (name) => {
+          if (snapshot) {
+            const created = await application.createLanguage(name);
+            const current = application.getSnapshot();
+            if (current) setSnapshot({ ...current });
+            setSelectedLanguage(toPrototypeLanguage(created));
+            setSelectedStage(undefined);
+            setDialog(null);
+            navigate("language-overview");
+            setMessage("语言已创建并保存到当前项目。");
+            return;
+          }
           const language: PrototypeLanguage = {
             id: `preview-${Date.now()}`, name, nativeName: name, family: "未分类",
             era: "尚未设置", region: "尚未设置", status: "设计草稿", words: 0, warnings: 0, stages: [],
@@ -409,16 +617,17 @@ export default function FishTongueDesktopApp({
   );
 }
 
-function TitleBar({ projectName, pageTitle, dirty, state, windowPort }: {
-  projectName: string; pageTitle: string; dirty: boolean; state: WindowState; windowPort: DesktopWindowPort;
+function TitleBar({ projectName, pageTitle, dirty, state, windowPort, onClose }: {
+  projectName: string; pageTitle: string; dirty: boolean; state: WindowState; windowPort: DesktopWindowPort; onClose: () => void;
 }) {
   return <header className={styles.titleBar}>
     <div className={styles.brand} translate="no"><span className={styles.brandMark}>F</span><strong>FishTongue</strong></div>
     <div
       className={styles.dragRegion}
-      data-tauri-drag-region
-      onMouseDown={(event) => {
+      data-window-drag-region
+      onPointerDown={(event) => {
         if (event.button !== 0) return;
+        event.preventDefault();
         if (event.detail === 2) {
           void windowPort.toggleMaximize();
           return;
@@ -436,7 +645,7 @@ function TitleBar({ projectName, pageTitle, dirty, state, windowPort }: {
       <button title={state.isMaximized ? "还原" : "最大化"} aria-label={state.isMaximized ? "还原" : "最大化"} onClick={() => void windowPort.toggleMaximize()}>
         {state.isMaximized ? <ExitFullScreenIcon aria-hidden="true" /> : <EnterFullScreenIcon aria-hidden="true" />}
       </button>
-      <button className={styles.closeButton} title="关闭" aria-label="关闭" onClick={() => void windowPort.close()}><Cross2Icon aria-hidden="true" /></button>
+      <button className={styles.closeButton} title="关闭" aria-label="关闭" onClick={onClose}><Cross2Icon aria-hidden="true" /></button>
     </div>
   </header>;
 }
@@ -640,8 +849,8 @@ function ContextToolbar(props: {
   </div>;
 }
 
-function Navigation({ collapsed, route, level, language, locale, onNavigate, onCollapse }: {
-  collapsed: boolean; route: WorkspaceRoute; level: "project" | "language"; language: PrototypeLanguage; locale: UiLocale;
+function Navigation({ collapsed, route, level, language, locale, project, onNavigate, onCollapse }: {
+  collapsed: boolean; route: WorkspaceRoute; level: "project" | "language"; language: PrototypeLanguage; locale: UiLocale; project: string;
   onNavigate: (route: WorkspaceRoute) => void; onCollapse: () => void;
 }) {
   const renderGroup = (group: "project" | "language") => routeRegistry.filter((item) => {
@@ -658,7 +867,7 @@ function Navigation({ collapsed, route, level, language, locale, onNavigate, onC
     ? (locale === "zh-CN" ? "展开导航" : "Expand navigation")
     : (locale === "zh-CN" ? "折叠导航" : "Collapse navigation");
   return <aside data-workspace-navigation className={styles.navigation} aria-label={locale === "zh-CN" ? "工作区导航" : "Workspace navigation"}>
-    <div className={styles.navHeading}><span>{collapsed ? "P" : prototypeProject.name}</span><button title={collapseLabel} aria-label={collapseLabel} onClick={onCollapse}><RowsIcon aria-hidden="true" /></button></div>
+    <div className={styles.navHeading}><span>{collapsed ? "P" : project}</span><button title={collapseLabel} aria-label={collapseLabel} onClick={onCollapse}><RowsIcon aria-hidden="true" /></button></div>
     <div className={styles.navGroup}><p>{locale === "zh-CN" ? "项目" : "Project"}</p>{renderGroup("project")}</div>
     {level === "language" && <>
       <div className={styles.navSeparator} />
@@ -668,14 +877,17 @@ function Navigation({ collapsed, route, level, language, locale, onNavigate, onC
   </aside>;
 }
 
-function PreviewBanner({ locale }: { locale: UiLocale }) {
-  return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{t(locale, "preview")}</span></div>;
+function PreviewBanner({ locale, live }: { locale: UiLocale; live: boolean }) {
+  return <div className={styles.previewBanner}><InfoCircledIcon aria-hidden="true" /><span>{live
+    ? (locale === "zh-CN" ? "真实项目模式 · 当前项目、语言、词典、演化和屈折数据会写入；生成结果仅供预览" : "Project mode · Project, language, lexicon, evolution, and inflection data are saved; generated results remain previews")
+    : t(locale, "preview")}</span></div>;
 }
 
-function PageHeader({ route, locale, onCreate }: { route: WorkspaceRoute; locale: UiLocale; onCreate: () => void }) {
+function PageHeader({ route, locale, live, onCreate }: { route: WorkspaceRoute; locale: UiLocale; live: boolean; onCreate: () => void }) {
   const item = routesById[route];
+  const featureState = live && ["project-home", "languages", "lexicon", "evolution", "morphology"].includes(route) ? "live" : item.state;
   return <header className={styles.pageHeader}>
-    <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={item.state} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
+    <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={featureState} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
     <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>
   </header>;
 }
@@ -705,6 +917,7 @@ const pageDescriptions: Record<WorkspaceRoute, string> = {
   contact: "以历史事件组织借词、仿译和结构影响提案。",
   translation: "使用项目词典和规则辅助翻译，缺失词汇进入审核。",
   "developer-tools": "受限脚本工作台；只读试运行后才能预览补丁。",
+  "ai-settings": "配置模型服务、凭据、默认模型和联网隐私许可。",
   map: "地图视图将在后续版本提供。",
   reconstruction: "自动逆向历史重构将在后续版本提供。",
   "unsafe-scripting": "高级本机代码模式将在后续版本提供。",
@@ -730,6 +943,7 @@ const pageDescriptionsEn: Record<WorkspaceRoute, string> = {
   contact: "Organize borrowing, calques, and structural influence as reviewable proposals.",
   translation: "Use project vocabulary for assisted translation and send missing words to review.",
   "developer-tools": "A constrained scripting workspace with read-only trials and patch previews.",
+  "ai-settings": "Configure model services, credentials, default models, and network privacy consent.",
   map: "The map view will be delivered in a later phase.",
   reconstruction: "Automatic reverse historical reconstruction is planned for a later phase.",
   "unsafe-scripting": "Advanced local-code mode is planned for a later phase.",
@@ -741,59 +955,138 @@ function PageContent(props: {
   route: WorkspaceRoute; language: PrototypeLanguage; selectedStage?: PrototypeLanguage["stages"][number];
   onLanguage: (language: PrototypeLanguage) => void; onStage: (stage?: PrototypeLanguage["stages"][number]) => void;
   onPlanned: (title: string) => void;
+  application: ProjectApplication;
+  snapshot: ProjectSnapshot | null;
+  soundChangeService?: SoundChangeService;
+  inflectionService?: InflectionService;
+  wordGenerationService?: WordGenerationService;
+  aiApplication?: AiApplication;
+  aiProposalDraft?: AiProposalDraft;
+  projectDataRefreshRequest: number;
+  onAiProposalConsumed: (requestId: string) => void;
+  lexiconCreateRequest: number;
+  lexiconEntryTab: "dictionary" | "profile" | "review";
+  onOpenCandidateReview: () => void;
+  onProjectChanged: (snapshot: ProjectSnapshot) => void;
+  onStatus: (message: string) => void;
+  onCreateLanguage: () => void;
 }) {
+  const liveLanguage = Boolean(
+    props.snapshot?.languages.some((language) => language.id === props.language.id)
+  );
+  const projectLanguages = props.snapshot
+    ? props.snapshot.languages.map(toPrototypeLanguage)
+    : prototypeProject.languages;
   switch (props.route) {
-    case "project-home": return <ProjectHome onLanguage={props.onLanguage} />;
-    case "languages": return <LanguagesPage onLanguage={props.onLanguage} />;
-    case "genealogy": return <GenealogyPage onLanguage={props.onLanguage} />;
-    case "events": return <EventsPage />;
-    case "project-settings": return <SettingsPage />;
+    case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "genealogy": return props.snapshot ? <LiveProjectPlaceholder title="语言谱系尚未接入真实项目" /> : <GenealogyPage onLanguage={props.onLanguage} />;
+    case "events": return props.snapshot ? <LiveProjectPlaceholder title="历史事件尚未接入真实项目" /> : <EventsPage />;
+    case "project-settings": return props.snapshot ? <LiveProjectPlaceholder title="项目设置尚未接入真实项目" /> : <SettingsPage />;
     case "language-overview": return <LanguageOverview language={props.language} />;
     case "language-properties": return <PropertiesPage language={props.language} />;
     case "stages": return <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
     case "dialects": return <DialectsPage />;
     case "phonology": return <PhonologyPage />;
-    case "morphology": return <MorphologyPage />;
-    case "lexicon": return <LexiconPage />;
+    case "morphology": return props.snapshot
+      ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} refreshRequest={props.projectDataRefreshRequest} />
+      : <MorphologyPage />;
+    case "lexicon": return props.snapshot
+      ? <WordGenerationWorkspace
+          application={props.application}
+          service={props.wordGenerationService}
+          languageId={props.language.id}
+          onProjectChanged={props.onProjectChanged}
+          onStatus={props.onStatus}
+          initialTab={props.lexiconEntryTab}
+          aiDraft={props.aiProposalDraft}
+          onAiDraftConsumed={props.onAiProposalConsumed}
+          dictionary={<LexiconWorkspace
+            application={props.application}
+            languageId={props.language.id}
+            createRequest={props.lexiconCreateRequest}
+            onProjectChanged={props.onProjectChanged}
+            onStatus={props.onStatus}
+            aiDraft={props.aiProposalDraft}
+            onAiDraftConsumed={props.onAiProposalConsumed}
+            refreshRequest={props.projectDataRefreshRequest}
+          />}
+        />
+      : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;
-    case "evolution": return <EvolutionPage />;
+    case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} />;
     case "contact": return <ContactPage />;
     case "translation": return <TranslationPage />;
     case "developer-tools": return <DeveloperToolsPage />;
+    case "ai-settings": return props.aiApplication
+      ? <AiSettingsPage ai={props.aiApplication} onStatus={props.onStatus} />
+      : <LiveProjectPlaceholder title="AI 设置仅在桌面应用中可用" />;
     default: return <PlannedPage route={props.route} onExplain={() => props.onPlanned(routesById[props.route].label)} />;
   }
 }
 
-function ProjectHome({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
+function ProjectHome({ languages, live, onLanguage, onCreateLanguage }: {
+  languages: PrototypeLanguage[];
+  live: boolean;
+  onLanguage: (language: PrototypeLanguage) => void;
+  onCreateLanguage: () => void;
+}) {
+  if (live && languages.length === 0) {
+    return <EmptyState
+      title="项目中还没有语言"
+      body="先创建第一门语言，随后即可保存音变规则、测试词和屈折系统。"
+      action="创建第一门语言"
+      onAction={onCreateLanguage}
+    />;
+  }
+  const summary = live
+    ? [[String(languages.length), "种语言"], ["—", "个词条"], ["—", "条继承关系"], ["0", "项待处理"]]
+    : [["4", "种语言"], ["2,640", "个词条"], ["3", "条继承关系"], ["22", "项待处理"]];
   return <div className={styles.pageGrid}>
     <section className={styles.summaryStrip}>
-      {[["4", "种语言"], ["2,640", "个词条"], ["3", "条继承关系"], ["22", "项待处理"]].map(([value, label]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}
+      {summary.map(([value, label]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}
     </section>
     <section className={styles.surfacePanel}>
       <PanelHeading title="语言概览" action="查看全部" />
-      <div className={styles.languageTable}>{prototypeProject.languages.map((language) => <button key={language.id} onClick={() => onLanguage(language)}>
+      <div className={styles.languageTable}>{languages.map((language) => <button key={language.id} onClick={() => onLanguage(language)}>
         <span className={styles.languageAvatar}>{language.name[0]}</span><span><strong>{language.name}</strong><small>{language.nativeName} · {language.family}</small></span>
         <span>{language.era}</span><span>{language.words.toLocaleString()} 词</span><StatusDot warnings={language.warnings} /><ChevronRightIcon aria-hidden="true" />
       </button>)}</div>
     </section>
-    <section className={styles.splitColumns}>
+    {!live && <section className={styles.splitColumns}>
       <div className={styles.surfacePanel}><PanelHeading title="最近活动" /><Timeline /></div>
       <div className={styles.surfacePanel}><PanelHeading title="需要处理" /><IssueList /></div>
-    </section>
+    </section>}
   </div>;
 }
 
-function LanguagesPage({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
+function LanguagesPage({ languages, live, onLanguage, onCreateLanguage }: {
+  languages: PrototypeLanguage[];
+  live: boolean;
+  onLanguage: (language: PrototypeLanguage) => void;
+  onCreateLanguage: () => void;
+}) {
+  if (live && languages.length === 0) {
+    return <EmptyState title="暂无语言" body="这个项目是空的。创建语言后，它会出现在这里。" action="创建语言" onAction={onCreateLanguage} />;
+  }
   return <section className={styles.surfacePanel}>
-    <div className={styles.filterRow}><span>状态：全部</span><span>语系：全部</span><span>地区：全部</span><span>4 种语言</span></div>
+    <div className={styles.filterRow}><span>状态：全部</span><span>语系：全部</span><span>地区：全部</span><span>{languages.length} 种语言</span></div>
     <table className={`${styles.dataTable} ${styles.languagesDataTable}`}><thead><tr><th>语言</th><th>状态</th><th>语系</th><th>年代</th><th>地区</th><th>词条</th><th>问题</th></tr></thead>
-      <tbody>{prototypeProject.languages.map((language) => <tr key={language.id}>
+      <tbody>{languages.map((language) => <tr key={language.id}>
         <td><button className={styles.textButton} aria-label={`打开${language.name}`} onClick={() => onLanguage(language)}><strong>{language.name}</strong><small>{language.nativeName}</small></button></td>
         <td><span className={styles.statusTag}>{language.status}</span></td><td>{language.family}</td><td>{language.era}</td><td>{language.region}</td>
         <td>{language.words.toLocaleString()}</td><td><StatusDot warnings={language.warnings} /></td>
       </tr>)}</tbody>
     </table>
   </section>;
+}
+
+function LiveProjectPlaceholder({ title }: { title: string }) {
+  return <EmptyState
+    title={title}
+    body="此页面目前只有设计原型。为避免把测试数据误认为项目内容，真实项目中暂不显示原型资料。"
+    action="后续阶段开放"
+  />;
 }
 
 function GenealogyPage({ onLanguage }: { onLanguage: (language: PrototypeLanguage) => void }) {
@@ -881,7 +1174,7 @@ function MorphologyPage() {
       <tbody>{[["-an","后缀","施事者","动词 → 名词"],["ka-","前缀","反复、再次","动词"],["-ir","屈折词尾","属格","名词"],["tal","词根","说、言语","动词"]].map((row)=><tr key={row[0]}>{row.map((v)=><td key={v}>{v}</td>)}<td><span className={styles.statusTag}>已确认</span></td></tr>)}</tbody></table></section></div>;
 }
 
-function LexiconPage() {
+function PrototypeLexiconPage() {
   const [selected, setSelected] = useState(prototypeProject.lexemes[0]);
   return <div className={styles.lexiconLayout}>
     <aside className={styles.filterPane}><h2>筛选与分类</h2><label className={styles.searchField}><MagnifyingGlassIcon aria-hidden="true" /><input aria-label="搜索词形或释义" name="lexicon-search" autoComplete="off" placeholder="搜索词形或释义…" /></label>
@@ -938,7 +1231,7 @@ function PlannedPage({ route, onExplain }: { route: WorkspaceRoute; onExplain: (
   return <EmptyState title={routesById[route].label} body={pageDescriptions[route]} action="查看后续规划" onAction={onExplain} />;
 }
 
-function AiSidebar({ onClose }: { onClose: () => void }) {
+function PrototypeAiSidebar({ onClose }: { onClose: () => void }) {
   return <aside className={styles.aiSidebar}><div className={styles.aiHeader}><span><ChatBubbleIcon aria-hidden="true" /><strong>AI 助手</strong></span><button title="关闭 AI 侧栏" aria-label="关闭 AI 侧栏" onClick={onClose}><Cross2Icon aria-hidden="true" /></button></div>
     <div className={styles.contextScope}><strong>上下文范围</strong><label><input type="radio" name="scope" defaultChecked />当前页面</label><label><input type="radio" name="scope" />当前语言</label><label><input type="radio" name="scope" />整个项目</label></div>
     <div className={styles.aiConversation}><div className={styles.emptyAi}><ChatBubbleIcon aria-hidden="true" /><strong>从当前页面开始</strong><p>AI 尚未连接。未来只能读取允许的上下文并生成提案。</p></div>
@@ -951,25 +1244,27 @@ function StatusBar({ snapshot, level, language, stage, message }: {
 }) {
   return <footer className={styles.statusBar}><span><CheckCircledIcon aria-hidden="true" />{snapshot?.dirty ? "有未保存修改" : "已保存"}</span><span className={styles.statusPath}>{snapshot?.session.sourcePath ?? prototypeProject.path}</span>
     <span>{level === "language" ? `${language.name} / ${stage || "默认状态"}` : "项目级视图"}</span>
-    <span><ExclamationTriangleIcon aria-hidden="true" />{level === "language" ? language.warnings : prototypeProject.languages.reduce((total, item) => total + item.warnings, 0)} 项问题</span>
+    <span><ExclamationTriangleIcon aria-hidden="true" />{level === "language" ? language.warnings : snapshot ? 0 : prototypeProject.languages.reduce((total, item) => total + item.warnings, 0)} 项问题</span>
     <span>AI 未连接</span><span className={styles.statusMessage} aria-live="polite" aria-atomic="true">{message}</span></footer>;
 }
 
 function WelcomePage(props: {
   recent: { name: string; path: string }[]; recoveryName?: string; message: string;
-  onPreview: () => void; onOpen: (path?: string) => void; onCreate: () => void; onImport: () => void; onRecover: () => void;
+  onPreview: () => void; onOpen: (path?: string) => void; onCreate: () => void; onImport: () => void; onRecover: () => void; onDiscardRecovery: () => void;
 }) {
   return <main className={styles.welcome} id="main-workspace">
     <section className={styles.welcomeIntro}><div className={styles.welcomeMark}>F</div><div><h1>FishTongue</h1><p>创建、整理和演化属于一个世界的语言。</p></div></section>
-    {props.recoveryName && <section className={styles.recoveryBar}><ExclamationTriangleIcon aria-hidden="true" /><div><strong>发现未正常关闭的项目</strong><p>{props.recoveryName} 有可恢复的本地工作区。</p></div><button onClick={props.onRecover}>恢复项目</button></section>}
+    {props.recoveryName && <section className={styles.recoveryBar}><ExclamationTriangleIcon aria-hidden="true" /><div><strong>发现未正常关闭的项目</strong><p>{props.recoveryName} 有可恢复的本地工作区。</p></div><button onClick={props.onDiscardRecovery}>丢弃工作区</button><button onClick={props.onRecover}>恢复项目</button></section>}
     <section className={styles.welcomeGrid}>
       <div className={styles.welcomeActions}><h2>开始工作</h2><button className={styles.welcomePrimary} onClick={props.onCreate}><PlusIcon aria-hidden="true" /><span><strong>新建项目</strong><small>从快速开始或空白语言开始</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={() => props.onOpen()}><FileTextIcon aria-hidden="true" /><span><strong>打开项目</strong><small>打开 .fishtongue 文件</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={props.onImport}><ArrowLeftIcon aria-hidden="true" /><span><strong>导入项目</strong><small>导入受支持的项目版本</small></span><ChevronRightIcon aria-hidden="true" /></button>
         <button onClick={props.onPreview}><GridIcon aria-hidden="true" /><span><strong>浏览设计原型</strong><small>查看完整桌面框架与全部页面</small></span><ChevronRightIcon aria-hidden="true" /></button>
       </div>
-      <div className={styles.recentProjects}><div className={styles.sectionHeading}><h2>最近项目</h2><button>查看全部</button></div>
-        {(props.recent.length ? props.recent : [{ name: "北海编年史", path: "D:\\Languages\\NorthSea.fishtongue" }, { name: "帝国边境语言", path: "D:\\Languages\\Frontier.fishtongue" }]).map((item)=><button key={item.path} onClick={()=>props.onOpen(item.path)}><span className={styles.fileGlyph}>FT</span><span><strong>{item.name}</strong><small>{item.path}</small></span><DotsHorizontalIcon aria-hidden="true" /></button>)}
+      <div className={styles.recentProjects}><div className={styles.sectionHeading}><h2>最近项目</h2><button disabled={!props.recent.length}>查看全部</button></div>
+        {props.recent.length
+          ? props.recent.map((item)=><button key={item.path} onClick={()=>props.onOpen(item.path)}><span className={styles.fileGlyph}>FT</span><span><strong>{item.name}</strong><small>{item.path}</small></span><DotsHorizontalIcon aria-hidden="true" /></button>)
+          : <p>还没有最近项目。新建或打开项目后会显示在这里。</p>}
       </div>
     </section>
     <footer className={styles.welcomeFooter}><span>本地模式 · 无需登录</span><span>{props.message}</span><span>Phase 1.5 设计原型</span></footer>
@@ -978,13 +1273,21 @@ function WelcomePage(props: {
 
 function AppDialog(props: {
   kind: DialogKind; plannedTitle: string; onClose: () => void;
-  onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => void;
+  onCreateProject: (name: string) => Promise<void>; onCreateLanguage: (name: string) => Promise<void> | void;
+  onSaveBeforeExit: () => Promise<void>; onAbandonAndExit: () => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const previousKindRef = useRef<DialogKind>(null);
-  useEffect(() => { if (props.kind === "new-project") setName("我的语言项目"); if (props.kind === "new-language") setName("新语言"); }, [props.kind]);
+  useEffect(() => {
+    setSubmitError("");
+    setSubmitting(false);
+    if (props.kind === "new-project") setName("我的语言项目");
+    if (props.kind === "new-language") setName("新语言");
+  }, [props.kind]);
   useEffect(() => {
     if (props.kind) {
       if (!previousKindRef.current) {
@@ -1005,10 +1308,29 @@ function AppDialog(props: {
     previousKindRef.current = props.kind;
   }, [props.kind]);
   if (!props.kind) return null;
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (props.kind === "new-project") void props.onCreateProject(name);
-    if (props.kind === "new-language") props.onCreateLanguage(name);
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      if (props.kind === "new-project") await props.onCreateProject(name);
+      if (props.kind === "new-language") await props.onCreateLanguage(name);
+    } catch (reason) {
+      setSubmitError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const exitAction = async (action: () => Promise<void>) => {
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      await action();
+    } catch (reason) {
+      setSubmitError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
   };
   return <div className={styles.dialogOverlay} role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget) props.onClose();}}>
     <div
@@ -1042,13 +1364,43 @@ function AppDialog(props: {
         }
       }}
     >
-      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.plannedTitle}</h2>
-        <p>{props.kind === "planned" ? "此能力只保留入口，不会在本轮执行。" : "设计预览与真实项目能力保持清楚边界。"}</p></div><button aria-label="关闭" onClick={props.onClose}><Cross2Icon aria-hidden="true" /></button></div>
+      <div className={styles.dialogHeader}><div><h2 id="dialog-title">{props.kind === "new-project" ? "新建项目" : props.kind === "new-language" ? "创建第一门语言" : props.kind === "search" ? "全局搜索" : props.kind === "lexurgy-help" ? "Lexurgy 规则快速参考" : props.kind === "save-before-exit" ? "保存项目后退出" : props.plannedTitle}</h2>
+        <p>{props.kind === "planned"
+          ? "此能力只保留入口，不会在本轮执行。"
+          : props.kind === "lexurgy-help"
+            ? "离线查看常用语法；完整规则仍以引擎验证结果为准。"
+            : props.kind === "save-before-exit"
+              ? "恢复或导入的项目不能自动覆盖原文件。请选择如何退出。"
+            : "设计预览与真实项目能力保持清楚边界。"}</p></div><button aria-label="关闭" onClick={props.onClose}><Cross2Icon aria-hidden="true" /></button></div>
       {props.kind === "planned" ? <div className={styles.dialogBody}><div className={styles.plannedIllustration}><LayersIcon aria-hidden="true" /></div><p>页面结构和入口已经完成，正式数据、算法或运行环境将在对应功能阶段接入。</p></div>
+      : props.kind === "save-before-exit" ? <>
+          <div className={styles.dialogBody}>
+            <p>“另存为并退出”会保留当前内容；“放弃恢复并退出”只删除临时工作区，不删除原项目文件。</p>
+          </div>
+          {submitError && <p className={styles.dialogError} role="alert">{submitError}</p>}
+          <div className={styles.dialogFooter}>
+            <button type="button" disabled={submitting} onClick={props.onClose}>取消</button>
+            <button type="button" className={styles.dangerButton} disabled={submitting} onClick={() => void exitAction(props.onAbandonAndExit)}>放弃恢复并退出</button>
+            <button type="button" className={styles.primaryButton} disabled={submitting} onClick={() => void exitAction(props.onSaveBeforeExit)}>{submitting ? "处理中…" : "另存为并退出"}</button>
+          </div>
+        </>
+      : props.kind === "lexurgy-help" ? <div className={styles.dialogBody}>
+          <p>这份参考随 FishTongue 安装，可在断网时使用。规则按从上到下的顺序执行。</p>
+          <div className={styles.commandResults}>
+            <div><strong>注释</strong><kbd># 说明文字</kbd></div>
+            <div><strong>基本替换</strong><kbd>规则名: a =&gt; e</kbd></div>
+            <div><strong>环境</strong><kbd>a =&gt; e / p _ t</kbd></div>
+            <div><strong>词首 / 词尾</strong><kbd>#_ / _#</kbd></div>
+            <div><strong>备选项</strong><kbd>{"{p, t, k} => {b, d, g}"}</kbd></div>
+            <div><strong>验证错误</strong><span>验证完成后会自动定位到对应行列。</span></div>
+          </div>
+          <p>运行结果只作预览，不会写回词典，也不会创建语言阶段。</p>
+        </div>
       : props.kind === "search" ? <div className={styles.dialogBody}><label className={styles.commandInput}><MagnifyingGlassIcon aria-hidden="true" /><input data-dialog-initial-focus aria-label="搜索页面、语言、词条或命令" name="global-search" autoComplete="off" placeholder="搜索页面、语言、词条或命令…" /></label><div className={styles.commandResults}>{["打开阿兰语","前往词典","查看语言谱系","切换深色主题"].map((v)=><button key={v}>{v}<kbd>↵</kbd></button>)}</div></div>
-      : <form onSubmit={submit}><div className={styles.dialogBody}><label className={styles.dialogField}><span>{props.kind === "new-project" ? "项目名称" : "语言名称"}</span><input data-dialog-initial-focus name={props.kind === "new-project" ? "project-name" : "language-name"} autoComplete="off" value={name} onChange={(event)=>setName(event.target.value)} /></label>
+      : <form onSubmit={(event) => void submit(event)}><div className={styles.dialogBody}><label className={styles.dialogField}><span>{props.kind === "new-project" ? "项目名称" : "语言名称"}</span><input data-dialog-initial-focus name={props.kind === "new-project" ? "project-name" : "language-name"} autoComplete="off" value={name} onChange={(event)=>setName(event.target.value)} /></label>
         {props.kind === "new-project" && <><label className={styles.dialogField}><span>项目说明</span><textarea name="project-description" autoComplete="off" placeholder="可选；本轮不写入项目…" /></label><div className={styles.wizardChoice}><button type="button" data-active><strong>快速开始</strong><span>参考现实语言规则</span></button><button type="button"><strong>从零构建</strong><span>创建空白语言</span></button></div></>}</div>
-        <div className={styles.dialogFooter}><button type="button" onClick={props.onClose}>取消</button><button className={styles.primaryButton} disabled={!name.trim()}>{props.kind === "new-project" ? "创建并选择位置" : "进入语言工作区"}</button></div></form>}
+        {submitError && <p className={styles.dialogError} role="alert">{submitError}</p>}
+        <div className={styles.dialogFooter}><button type="button" disabled={submitting} onClick={props.onClose}>取消</button><button className={styles.primaryButton} disabled={!name.trim() || submitting}>{submitting ? "正在创建…" : props.kind === "new-project" ? "创建并选择位置" : "进入语言工作区"}</button></div></form>}
     </div>
   </div>;
 }
@@ -1063,3 +1415,10 @@ function StatusDot({ warnings }: { warnings: number }) { return <span className=
 function Timeline() { return <div className={styles.timeline}>{[["前 80","诸王时期开始"],["112","北方贸易接触"],["260","第一次正字法整理"],["340","北迁与方言分化"]].map(([year,event],i)=><div key={year}><span>{year}</span><i data-last={i===3}/><div><strong>{event}</strong><small>{i===1 ? "涉及阿兰语与诺尔语 · 18 个借词候选" : "历史事件 · 设计预览"}</small></div></div>)}</div>; }
 function IssueList() { return <div className={styles.issueList}>{[["音变规则","3 条规则尚未验证"],["词典","7 个词条缺少来源"],["阶段","失落世纪被标记为无记录"]].map(([group,text])=><button key={text}><ExclamationTriangleIcon aria-hidden="true" /><span><strong>{text}</strong><small>{group}</small></span><ChevronRightIcon aria-hidden="true" /></button>)}</div>; }
 function documentationLabel(value?: PrototypeLanguage["stages"][number]["documentation"]) { return value === "recorded" ? "有记录" : value === "partial" ? "部分记录" : value === "unrecorded" ? "无记录" : value === "reconstructed" ? "重构" : "未设置"; }
+function errorMessage(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "object" && reason && "message" in reason) {
+    return String((reason as { message: unknown }).message);
+  }
+  return String(reason);
+}

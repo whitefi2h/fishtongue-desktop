@@ -1,5 +1,6 @@
 import {
   EvolutionRepository,
+  InflectionRepository,
   LanguageRepository,
   LexemeRepository,
   ProjectRepository,
@@ -7,6 +8,7 @@ import {
 } from "@/fishtongue/application/ports/ProjectPorts";
 import {
   Evolution,
+  InflectionSystem,
   Language,
   Lexeme,
   Project,
@@ -24,7 +26,11 @@ type LexemeRow = {
   id: string;
   language_id: string;
   romanized: string;
+  ipa: string;
   part_of_speech: string;
+  status: Lexeme["status"];
+  source_type: Lexeme["sourceType"];
+  notes: string;
   created_at: string;
   updated_at: string;
   sense_id: string;
@@ -38,6 +44,23 @@ type EvolutionRow = {
   updated_at: string;
   word_id: string | null;
   word: string | null;
+  position: number | null;
+};
+type LexemeMorphemeRow = {
+  lexeme_id: string;
+  morpheme_id: string;
+  position: number;
+  role: string;
+};
+type InflectionRow = {
+  id: string;
+  language_id: string;
+  rules_json: string;
+  rules_version: number;
+  updated_at: string;
+  test_case_id: string | null;
+  stem: string | null;
+  categories_json: string | null;
   position: number | null;
 };
 
@@ -118,8 +141,8 @@ export class SqliteLexemeRepository implements LexemeRepository {
 
   async list(languageId: string): Promise<Lexeme[]> {
     const rows = await this.database.select<LexemeRow>(
-      `SELECT l.id, l.language_id, l.romanized, l.part_of_speech,
-              l.created_at, l.updated_at, s.id AS sense_id,
+      `SELECT l.id, l.language_id, l.romanized, l.ipa, l.part_of_speech,
+              l.status, l.source_type, l.notes, l.created_at, l.updated_at, s.id AS sense_id,
               s.definition, s.position
        FROM lexemes l
        JOIN senses s ON s.lexeme_id = l.id
@@ -135,10 +158,15 @@ export class SqliteLexemeRepository implements LexemeRepository {
           id: row.id,
           languageId: row.language_id,
           romanized: row.romanized,
+          ipa: row.ipa,
           partOfSpeech: row.part_of_speech,
+          status: row.status,
+          sourceType: row.source_type,
+          notes: row.notes,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           senses: [],
+          morphemes: [],
         } satisfies Lexeme);
       lexeme.senses.push({
         id: row.sense_id,
@@ -147,14 +175,30 @@ export class SqliteLexemeRepository implements LexemeRepository {
       });
       lexemes.set(row.id, lexeme);
     }
+    const morphemeRows = await this.database.select<LexemeMorphemeRow>(
+      `SELECT lm.lexeme_id, lm.morpheme_id, lm.position, lm.role
+       FROM lexeme_morphemes lm
+       JOIN lexemes l ON l.id = lm.lexeme_id
+       WHERE l.language_id = $1
+       ORDER BY lm.lexeme_id, lm.position`,
+      [languageId]
+    );
+    for (const row of morphemeRows) {
+      lexemes.get(row.lexeme_id)?.morphemes.push({
+        morphemeId: row.morpheme_id,
+        position: row.position,
+        role: row.role,
+      });
+    }
     return [...lexemes.values()];
   }
 
   async save(lexeme: Lexeme): Promise<void> {
     await this.database.execute(
       `INSERT INTO lexeme_write_commands
-       (id, language_id, romanized, part_of_speech, created_at, updated_at, senses_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       (id, language_id, romanized, part_of_speech, created_at, updated_at,
+        senses_json, ipa, status, source_type, notes, morphemes_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         lexeme.id,
         lexeme.languageId,
@@ -163,6 +207,11 @@ export class SqliteLexemeRepository implements LexemeRepository {
         lexeme.createdAt,
         lexeme.updatedAt,
         JSON.stringify(lexeme.senses),
+        lexeme.ipa,
+        lexeme.status,
+        lexeme.sourceType,
+        lexeme.notes,
+        JSON.stringify(lexeme.morphemes),
       ]
     );
   }
@@ -220,6 +269,71 @@ export class SqliteEvolutionRepository implements EvolutionRepository {
         evolution.soundChanges,
         evolution.updatedAt,
         JSON.stringify(evolution.testWords),
+      ]
+    );
+  }
+}
+
+export class SqliteInflectionRepository implements InflectionRepository {
+  constructor(private readonly database: DatabaseSessionPort) {}
+
+  async getOrCreate(languageId: string): Promise<InflectionSystem> {
+    const rows = await this.database.select<InflectionRow>(
+      `SELECT i.id, i.language_id, i.rules_json, i.rules_version, i.updated_at,
+              t.id AS test_case_id, t.stem, t.categories_json, t.position
+       FROM inflection_systems i
+       LEFT JOIN inflection_test_cases t ON t.inflection_system_id = i.id
+       WHERE i.language_id = $1
+       ORDER BY t.position`,
+      [languageId]
+    );
+    if (!rows.length) {
+      const created: InflectionSystem = {
+        id: uuid(),
+        languageId,
+        rules: "",
+        rulesVersion: 1,
+        updatedAt: new Date().toISOString(),
+        testCases: [],
+      };
+      await this.save(created);
+      return created;
+    }
+    const first = rows[0];
+    return {
+      id: first.id,
+      languageId: first.language_id,
+      rules: JSON.parse(first.rules_json) as unknown,
+      rulesVersion: first.rules_version,
+      updatedAt: first.updated_at,
+      testCases: rows.flatMap((row) =>
+        row.test_case_id &&
+        row.stem !== null &&
+        row.categories_json !== null &&
+        row.position !== null
+          ? [{
+              id: row.test_case_id,
+              stem: row.stem,
+              categories: JSON.parse(row.categories_json) as Record<string, string>,
+              position: row.position,
+            }]
+          : []
+      ),
+    };
+  }
+
+  async save(system: InflectionSystem): Promise<void> {
+    await this.database.execute(
+      `INSERT INTO inflection_write_commands
+       (id, language_id, rules_json, rules_version, updated_at, test_cases_json)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        system.id,
+        system.languageId,
+        JSON.stringify(system.rules),
+        system.rulesVersion,
+        system.updatedAt,
+        JSON.stringify(system.testCases),
       ]
     );
   }

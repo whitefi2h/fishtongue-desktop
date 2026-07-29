@@ -11,13 +11,17 @@ export default function ScCodeEditor({
   initialCode,
   onUpdateCode,
   height,
+  errorLocation,
 }: {
   initialCode?: string;
   onUpdateCode: (newCode: string) => void;
   height?: string;
+  errorLocation?: { line: number; column?: number };
 }) {
   const editor = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
+  const errorLine = errorLocation?.line;
+  const errorColumn = errorLocation?.column;
   // Prevents state variables used in onUpdateCode from being captured.
   const onUpdateCodeRef = useRef<(newCode: string) => void>(() => {});
 
@@ -130,6 +134,28 @@ export default function ScCodeEditor({
   useEffect(() => {
     view.current?.setState(createState.current(initialCode ?? ""));
   }, [initialCode]);
+
+  useEffect(() => {
+    const editorView = view.current;
+    if (!editorView || !errorLine) {
+      return;
+    }
+    const lineNumber = Math.min(
+      Math.max(errorLine, 1),
+      editorView.state.doc.lines
+    );
+    const line = editorView.state.doc.line(lineNumber);
+    const columnOffset = Math.min(
+      Math.max((errorColumn ?? 1) - 1, 0),
+      line.length
+    );
+    const position = line.from + columnOffset;
+    editorView.dispatch({
+      selection: { anchor: position },
+      effects: EditorView.scrollIntoView(position, { y: "center" }),
+    });
+    editorView.focus();
+  }, [errorColumn, errorLine]);
 
   return <div ref={editor} style={{ height }}></div>;
 }

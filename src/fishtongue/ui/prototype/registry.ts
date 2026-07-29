@@ -26,6 +26,7 @@ export const routeRegistry: RouteDefinition[] = [
   { id: "contact", label: "语言接触", englishLabel: "Language contact", group: "language", state: "prototype" },
   { id: "translation", label: "辅助翻译", englishLabel: "Assisted translation", group: "language", state: "prototype" },
   { id: "developer-tools", label: "开发者工具", englishLabel: "Developer tools", group: "tools", state: "prototype" },
+  { id: "ai-settings", label: "AI 与模型设置", englishLabel: "AI and model settings", group: "tools", state: "live" },
   { id: "map", label: "地图视图", englishLabel: "Map", group: "project", state: "planned" },
   { id: "reconstruction", label: "历史重构", englishLabel: "Reconstruction", group: "language", state: "planned" },
   { id: "unsafe-scripting", label: "高级脚本模式", englishLabel: "Unsafe scripting", group: "tools", state: "planned" },

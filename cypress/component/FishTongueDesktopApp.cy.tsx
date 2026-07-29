@@ -1,22 +1,32 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
-import { Evolution, Language, Lexeme } from "@/fishtongue/domain/models";
+import { Evolution, InflectionSystem, Language, Lexeme, RecoveryCandidate } from "@/fishtongue/domain/models";
 import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 
 class TestWindowPort implements DesktopWindowPort {
   calls: string[] = [];
   state: WindowState = { isMaximized: false, isFocused: true };
+  closeRequested?: () => void | Promise<void>;
   async startDragging() { this.calls.push("drag"); }
   async minimize() { this.calls.push("minimize"); }
   async toggleMaximize() { this.calls.push("maximize"); this.state.isMaximized = !this.state.isMaximized; }
   async close() { this.calls.push("close"); }
   async isMaximized() { return this.state.isMaximized; }
   async subscribeWindowState(listener: (state: WindowState) => void) { listener(this.state); return () => undefined; }
+  async subscribeCloseRequested(listener: () => void | Promise<void>) {
+    this.closeRequested = listener;
+    return () => { this.closeRequested = undefined; };
+  }
+  async requestSystemClose() { await this.closeRequested?.(); }
 }
 
 class TestApplication implements ProjectApplication {
   writes = 0;
   snapshot: ProjectSnapshot | null = null;
+  recovery: RecoveryCandidate | null = null;
+  lexemes: Lexeme[] = [];
+  closes = 0;
+  abandons = 0;
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -33,26 +43,241 @@ class TestApplication implements ProjectApplication {
   async openProject() { return this.snapshot; }
   async importProject() { return this.snapshot; }
   async saveProject() { this.writes += 1; return this.snapshot!; }
-  async saveProjectAs() { this.writes += 1; return this.snapshot; }
-  async closeProject() { this.snapshot = null; }
+  async saveProjectAs() {
+    this.writes += 1;
+    if (this.snapshot) {
+      this.snapshot = {
+        ...this.snapshot,
+        session: { ...this.snapshot.session, requiresSaveAs: false },
+        dirty: false,
+      };
+    }
+    return this.snapshot;
+  }
+  async closeProject() { this.closes += 1; this.snapshot = null; }
+  async abandonProject() { this.abandons += 1; this.snapshot = null; }
   async recoverProject() { return this.snapshot!; }
-  async discardRecovery() {}
-  async inspectRecovery() { return null; }
+  async discardRecovery() { this.recovery = null; }
+  async inspectRecovery() { return this.recovery; }
   async listRecentProjects() { return []; }
   async listLanguages(): Promise<Language[]> { return []; }
-  async createLanguage(): Promise<Language> { throw new Error("prototype must not persist"); }
+  async createLanguage(name: string): Promise<Language> {
+    if (!this.snapshot) throw new Error("当前没有打开的项目");
+    const now = new Date().toISOString();
+    const language: Language = {
+      id: `language-${this.snapshot.languages.length + 1}`,
+      projectId: this.snapshot.project.id,
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.writes += 1;
+    this.snapshot = {
+      ...this.snapshot,
+      languages: [...this.snapshot.languages, language],
+    };
+    return language;
+  }
   async renameLanguage() { throw new Error("prototype must not persist"); }
   async deleteLanguage() { throw new Error("prototype must not persist"); }
-  async listLexemes(): Promise<Lexeme[]> { return []; }
-  async saveLexeme() { throw new Error("prototype must not persist"); }
-  async deleteLexeme() { throw new Error("prototype must not persist"); }
+  async listLexemes(languageId: string): Promise<Lexeme[]> {
+    return this.lexemes.filter((lexeme) => lexeme.languageId === languageId);
+  }
+  async saveLexeme(lexeme: Lexeme) {
+    this.writes += 1;
+    this.lexemes = [
+      ...this.lexemes.filter((value) => value.id !== lexeme.id),
+      lexeme,
+    ];
+  }
+  async deleteLexeme(id: string) {
+    this.writes += 1;
+    this.lexemes = this.lexemes.filter((lexeme) => lexeme.id !== id);
+  }
+  async listMorphemes() { return []; }
+  async saveMorpheme() { this.writes += 1; }
+  async deleteMorpheme() { this.writes += 1; }
+  async listWordGenerationProfiles() { return []; }
+  async saveWordGenerationProfile() { this.writes += 1; }
+  async deleteWordGenerationProfile() { this.writes += 1; }
+  async listConceptLists() { return []; }
+  async saveConceptList() { this.writes += 1; }
+  async deleteConceptList() { this.writes += 1; }
+  async listGenerationBatches() { return []; }
+  async createGenerationBatch() { this.writes += 1; }
+  async saveGenerationCandidate() { this.writes += 1; }
+  async saveGenerationCandidates() { this.writes += 1; }
+  async commitGenerationBatch() { this.writes += 1; }
+  async dismissGenerationBatch() { this.writes += 1; }
+  async listLexiconBatchOperations() { return []; }
+  async undoLexiconBatchOperation() { this.writes += 1; }
   async getEvolution(): Promise<Evolution> { throw new Error("prototype must not persist"); }
   async saveEvolution() { throw new Error("prototype must not persist"); }
+  async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
+  async saveInflectionSystem() { throw new Error("prototype must not persist"); }
   getSnapshot() { return this.snapshot; }
 }
 
 describe("FishTongue Phase 1.5 desktop prototype", () => {
   beforeEach(() => cy.viewport(1440, 900));
+
+  it("keeps a new real project empty until the user creates a real language", () => {
+    const app = new TestApplication();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("真实测试项目");
+    cy.contains("button", "创建并选择位置").click();
+
+    cy.contains("项目中还没有语言").should("be.visible");
+    cy.contains("北海编年史").should("not.exist");
+    cy.contains("阿兰语").should("not.exist");
+
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("测试祖语");
+    cy.contains("button", "进入语言工作区").click();
+
+    cy.get("[aria-label='当前位置']").should("contain.text", "真实测试项目");
+    cy.get("[aria-label='当前位置']").should("contain.text", "测试祖语");
+    cy.contains("真实项目模式").should("be.visible");
+    cy.wrap(null).then(() => {
+      expect(app.snapshot?.languages.map((language) => language.name)).to.deep.equal(["测试祖语"]);
+    });
+  });
+
+  it("creates a persistent lexeme for the current real language", () => {
+    const app = new TestApplication();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("真实词典项目");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("测试语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.contains("h1", "概览").should("be.visible");
+    cy.get("[aria-label='工作区导航']").contains("button", "词典").click();
+
+    cy.contains("当前语言还没有词条").should("be.visible");
+    cy.get("[data-create-lexeme]").click();
+    cy.get("button[form='lexeme-editor-form']").should("be.visible");
+    cy.get("#lexeme-editor-form input[name='lexeme-romanized']").should("be.enabled");
+    cy.get("#lexeme-editor-form input[name='lexeme-romanized']").type("ama");
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
+    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
+    cy.get("textarea[name='lexeme-senses']")
+      .should("be.enabled")
+      .type("母亲{enter}女性长辈", { force: true });
+    cy.get("button[form='lexeme-editor-form']").click();
+
+    cy.contains("td", "ama").should("exist");
+    cy.contains("td", "母亲").should("exist");
+    cy.wrap(null).then(() => {
+      expect(app.lexemes).to.have.length(1);
+      expect(app.lexemes[0].languageId).to.equal("language-1");
+      expect(app.lexemes[0].senses.map((sense) => sense.definition)).to.deep.equal([
+        "母亲",
+        "女性长辈",
+      ]);
+    });
+
+    cy.get("textarea[name='lexeme-notes']").type("人工修改");
+    cy.get("button[form='lexeme-editor-form']").should("be.visible").click();
+    cy.wrap(null).then(() => {
+      expect(app.lexemes[0].notes).to.equal("人工修改");
+    });
+
+    cy.get("[data-create-lexeme]").click();
+    cy.get("input[name='lexeme-romanized']").should("have.value", "");
+    cy.contains("tr", "ama").find("td").eq(2).click();
+    cy.get("input[name='lexeme-romanized']").should("have.value", "ama");
+  });
+
+  it("closes the active project before the custom title-bar closes the window", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(() => app.createProject("正常关闭测试"));
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("closes immediately from the welcome page when no project is open", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(0);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("offers an explicit discard-and-exit path for a recovered project", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(async () => {
+      await app.createProject("恢复退出测试");
+      app.snapshot = {
+        ...app.snapshot!,
+        session: { ...app.snapshot!.session, requiresSaveAs: true, recovered: true },
+        dirty: true,
+      };
+    });
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.get("button[title='关闭']").click();
+    cy.contains("保存项目后退出").should("be.visible");
+    cy.contains("button", "放弃恢复并退出").click();
+    cy.wrap(null).then(() => {
+      expect(app.abandons).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("closes the active project before an operating-system close request", () => {
+    const app = new TestApplication();
+    const windowPort = new TestWindowPort();
+    cy.then(() => app.createProject("系统关闭测试"));
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={windowPort} />);
+
+    cy.then(() => windowPort.requestSystemClose());
+    cy.wrap(null).then(() => {
+      expect(app.closes).to.equal(1);
+      expect(app.snapshot).to.equal(null);
+      expect(windowPort.calls).to.include("close");
+    });
+  });
+
+  it("lets the user discard a stale recovery workspace before creating a project", () => {
+    const app = new TestApplication();
+    const now = new Date().toISOString();
+    app.recovery = {
+      manifest: {
+        formatVersion: 1,
+        databaseSchemaVersion: 2,
+        projectId: "stale-project",
+        name: "未完成项目",
+        createdAt: now,
+        updatedAt: now,
+        appVersion: "test",
+      },
+      sourcePath: "D:\\Languages\\stale.fishtongue",
+    };
+
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} />);
+    cy.contains("发现未正常关闭的项目").should("be.visible");
+    cy.contains("button", "丢弃工作区").click();
+    cy.contains("发现未正常关闭的项目").should("not.exist");
+    cy.wrap(null).then(() => expect(app.recovery).to.equal(null));
+  });
 
   it("uses custom chrome and exposes the complete workspace", () => {
     const app = new TestApplication();
@@ -66,11 +291,11 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
       cy.contains("工具").should("be.visible");
     });
     cy.get("[aria-label='最小化']").click().then(() => expect(windowPort.calls).to.include("minimize"));
-    cy.get("[data-tauri-drag-region]")
-      .trigger("mousedown", { button: 0, detail: 1 })
+    cy.get("[data-window-drag-region]")
+      .trigger("pointerdown", { button: 0, detail: 1 })
       .then(() => expect(windowPort.calls).to.include("drag"));
-    cy.get("[data-tauri-drag-region]")
-      .trigger("mousedown", { button: 0, detail: 2 })
+    cy.get("[data-window-drag-region]")
+      .trigger("pointerdown", { button: 0, detail: 2 })
       .then(() => expect(windowPort.calls).to.include("maximize"));
     cy.contains("浏览设计原型").click();
     cy.contains("语言概览").should("be.visible");
