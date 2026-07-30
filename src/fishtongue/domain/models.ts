@@ -15,6 +15,190 @@ export interface Language {
   updatedAt: UtcTimestamp;
 }
 
+export type LanguageStageKind =
+  | "internal_default"
+  | "historical_stage"
+  | "lightweight_dialect";
+export type DocumentationStatus =
+  | "recorded"
+  | "partial"
+  | "unrecorded"
+  | "reconstructed";
+export type StageStorageMode =
+  | "inherited_delta"
+  | "independent_snapshot"
+  | "no_data";
+
+export interface LanguageStage {
+  id: string;
+  languageId: string;
+  name: string;
+  kind: LanguageStageKind;
+  documentationStatus: DocumentationStatus;
+  storageMode: StageStorageMode;
+  chronologyParentId?: string;
+  dataBaseStageId?: string;
+  startLabel: string;
+  endLabel: string;
+  position: number;
+  visible: boolean;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface StageContextRecord {
+  stageId: string;
+  background: string;
+  evidenceNotes: string;
+  sources: string[];
+  updatedAt: UtcTimestamp;
+}
+
+export type StageComponentType =
+  | "lexicon"
+  | "morphemes"
+  | "evolution"
+  | "inflection"
+  | "wordgen";
+export type StageOverrideOperation = "replace" | "merge" | "remove";
+
+export interface StageComponentOverride {
+  id: string;
+  stageId: string;
+  componentType: StageComponentType;
+  operation: StageOverrideOperation;
+  targetId: string;
+  payload: Record<string, unknown>;
+  position: number;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export type LanguageRelationKind = "genetic" | "contact" | "dialect";
+export type EvidenceConfidence =
+  | "confirmed"
+  | "probable"
+  | "possible"
+  | "disputed";
+
+export interface LanguageRelation {
+  id: string;
+  projectId: string;
+  sourceLanguageId: string;
+  targetLanguageId: string;
+  sourceStageId?: string;
+  targetStageId?: string;
+  kind: LanguageRelationKind;
+  isPrimary: boolean;
+  confidence: EvidenceConfidence;
+  notes: string;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export type HistoricalEventType =
+  | "migration"
+  | "contact"
+  | "split"
+  | "standardization"
+  | "political"
+  | "cultural"
+  | "other";
+
+export interface HistoricalEventParticipant {
+  languageId: string;
+  stageId?: string;
+  role: string;
+  notes: string;
+}
+
+export interface HistoricalEvent {
+  id: string;
+  projectId: string;
+  name: string;
+  eventType: HistoricalEventType;
+  startLabel: string;
+  endLabel: string;
+  description: string;
+  position: number;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+  participants: HistoricalEventParticipant[];
+}
+
+export type EtymologyRelationKind =
+  | "inheritance"
+  | "borrowing"
+  | "cognate"
+  | "derivation"
+  | "calque"
+  | "unknown";
+
+export interface EtymologyRelation {
+  id: string;
+  projectId: string;
+  sourceLexemeId?: string;
+  targetLexemeId: string;
+  sourceStageId?: string;
+  targetStageId?: string;
+  kind: EtymologyRelationKind;
+  sourceForm: string;
+  confidence: EvidenceConfidence;
+  notes: string;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface ResolvedStageState {
+  stage: LanguageStage;
+  lineage: string[];
+  components: {
+    lexicon: Record<string, Record<string, unknown>>;
+    morphemes: Record<string, Record<string, unknown>>;
+    evolution?: Record<string, unknown>;
+    inflection?: Record<string, unknown>;
+    wordgen: Record<string, Record<string, unknown>>;
+  };
+  warnings: string[];
+}
+
+export type StageEvolutionCandidateStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "committed";
+
+export interface StageEvolutionCandidate {
+  id: string;
+  sourceLexemeId: string;
+  sourceForm: string;
+  resultForm: string;
+  payload: Record<string, unknown>;
+  status: StageEvolutionCandidateStatus;
+  conflicts: GenerationConflict[];
+  position: number;
+}
+
+export interface StageEvolutionBatch {
+  id: string;
+  languageId: string;
+  sourceStageId: string;
+  targetStageId: string;
+  rulesSnapshot: string;
+  inputSnapshot: Array<{ lexemeId: string; form: string }>;
+  status: "draft" | "committed" | "undone";
+  createdAt: UtcTimestamp;
+  committedAt?: UtcTimestamp;
+  candidates: StageEvolutionCandidate[];
+}
+
+export interface StageEvolutionOperation {
+  id: string;
+  batchId: string;
+  createdAt: UtcTimestamp;
+  undoneAt?: UtcTimestamp;
+}
+
 export interface Sense {
   id: string;
   definition: string;
@@ -312,7 +496,18 @@ export interface AiMessage {
 
 export interface AiContextReference {
   id: string;
-  type: "page" | "language" | "lexeme" | "morpheme" | "evolution" | "inflection" | "wordgen";
+  type:
+    | "page"
+    | "language"
+    | "lexeme"
+    | "morpheme"
+    | "evolution"
+    | "inflection"
+    | "wordgen"
+    | "language_stage"
+    | "language_relation"
+    | "historical_event"
+    | "etymology";
   label: string;
   detail: string;
 }

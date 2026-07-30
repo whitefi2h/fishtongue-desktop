@@ -4,13 +4,17 @@ import {
   AiUiContext,
 } from "@/fishtongue/application/ports/AiPorts";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { AiContextReference, AiContextScope } from "@/fishtongue/domain/models";
 
 const MAX_CONTEXT_BYTES = 64 * 1024;
 const MAX_RECORDS = 200;
 
 export default class ProjectAiContextBroker implements AiContextBroker {
-  constructor(private readonly project: ProjectApplication) {}
+  constructor(
+    private readonly project: ProjectApplication,
+    private readonly history?: Phase5Application
+  ) {}
 
   async buildContext(input: {
     ui: AiUiContext;
@@ -77,6 +81,7 @@ export default class ProjectAiContextBroker implements AiContextBroker {
         remaining -= lexemes.length;
       }
       content.projectLexicon = projectLexicon;
+      Object.assign(content, await this.projectHistoryContext(references));
     }
 
     const limited = limitJson(content, MAX_CONTEXT_BYTES);
@@ -148,6 +153,18 @@ export default class ProjectAiContextBroker implements AiContextBroker {
       });
       return { evolution };
     }
+    if (route === "stages" || route === "dialects") {
+      return this.stageContext(languageId, references, route === "stages");
+    }
+    if (route === "genealogy") {
+      return this.projectHistoryContext(references, ["relations"]);
+    }
+    if (route === "events") {
+      return this.projectHistoryContext(references, ["events"]);
+    }
+    if (route === "contact") {
+      return this.projectHistoryContext(references, ["etymology"]);
+    }
     return {};
   }
 
@@ -179,6 +196,71 @@ export default class ProjectAiContextBroker implements AiContextBroker {
       wordGenerationProfiles: profiles.slice(0, 20),
       evolution,
       inflection,
+      ...(await this.stageContext(languageId, references, true)),
+    };
+  }
+
+  private async stageContext(
+    languageId: string,
+    references: AiContextReference[],
+    includeResolvedState: boolean
+  ): Promise<Record<string, unknown>> {
+    if (!this.history) return {};
+    const stages = await this.history.listStages(languageId);
+    references.push(...stages.slice(0, 50).map((stage) => ({
+      id: stage.id,
+      type: "language_stage" as const,
+      label: stage.name,
+      detail: `${stage.kind} · ${stage.documentationStatus}`,
+    })));
+    const selected = stages.find((stage) => stage.kind !== "internal_default") ?? stages[0];
+    const resolved = includeResolvedState && selected
+      ? await this.history.resolveStage(selected.id)
+      : undefined;
+    return {
+      languageStages: stages.slice(0, 50),
+      selectedStageState: resolved,
+    };
+  }
+
+  private async projectHistoryContext(
+    references: AiContextReference[],
+    only: Array<"relations" | "events" | "etymology"> = ["relations", "events", "etymology"]
+  ): Promise<Record<string, unknown>> {
+    if (!this.history) return {};
+    const relations = only.includes("relations")
+      ? (await this.history.listLanguageRelations()).slice(0, 50)
+      : [];
+    const events = only.includes("events")
+      ? (await this.history.listHistoricalEvents()).slice(0, 50)
+      : [];
+    const etymology = only.includes("etymology")
+      ? (await this.history.listEtymologyRelations()).slice(0, 50)
+      : [];
+    references.push(
+      ...relations.map((item) => ({
+        id: item.id,
+        type: "language_relation" as const,
+        label: item.kind,
+        detail: `${item.sourceLanguageId} → ${item.targetLanguageId}`,
+      })),
+      ...events.map((item) => ({
+        id: item.id,
+        type: "historical_event" as const,
+        label: item.name,
+        detail: item.startLabel || item.eventType,
+      })),
+      ...etymology.map((item) => ({
+        id: item.id,
+        type: "etymology" as const,
+        label: item.kind,
+        detail: `${item.sourceLexemeId} → ${item.targetLexemeId}`,
+      }))
+    );
+    return {
+      ...(only.includes("relations") ? { languageRelations: relations } : {}),
+      ...(only.includes("events") ? { historicalEvents: events } : {}),
+      ...(only.includes("etymology") ? { etymologyRelations: etymology } : {}),
     };
   }
 }

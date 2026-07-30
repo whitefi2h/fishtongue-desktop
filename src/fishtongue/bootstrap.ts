@@ -27,6 +27,16 @@ import ProjectAiContextBroker from "@/fishtongue/application/services/ProjectAiC
 import AiAssistantService from "@/fishtongue/application/services/AiAssistantService";
 import AiProposalService from "@/fishtongue/application/services/AiProposalService";
 import { AiApplication } from "@/fishtongue/application/ports/AiPorts";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
+import HistoryApplicationService from "@/fishtongue/application/services/HistoryApplicationService";
+import StageStateResolver from "@/fishtongue/application/services/StageStateResolver";
+import {
+  SqliteEtymologyRepository,
+  SqliteHistoricalEventRepository,
+  SqliteLanguageRelationRepository,
+  SqliteLanguageStageRepository,
+  SqliteStageEvolutionRepository,
+} from "@/fishtongue/infrastructure/Phase5Repositories";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -66,9 +76,27 @@ function createProjectApplication(database: TauriDatabaseSession): ProjectSessio
 export function createDesktopApplications(): {
   project: ProjectSessionService;
   ai: AiApplication;
+  history: Phase5Application;
 } {
   const database = new TauriDatabaseSession();
   const project = createProjectApplication(database);
+  const stageRepository = new SqliteLanguageStageRepository(database);
+  const history = new HistoryApplicationService(
+    project,
+    stageRepository,
+    new SqliteLanguageRelationRepository(database),
+    new SqliteHistoricalEventRepository(database),
+    new SqliteEtymologyRepository(database),
+    new SqliteStageEvolutionRepository(database),
+    new StageStateResolver(
+      stageRepository,
+      new SqliteLexemeRepository(database),
+      new SqliteMorphemeRepository(database),
+      new SqliteEvolutionRepository(database),
+      new SqliteInflectionRepository(database),
+      new SqliteWordGenerationProfileRepository(database)
+    )
+  );
   const repository = new SqliteAiConversationRepository(database);
   const wordGeneration = createDesktopWordGenerationService();
   const proposals = new AiProposalService(
@@ -81,11 +109,11 @@ export function createDesktopApplications(): {
     new TauriAiProviderAdapter(),
     new TauriAiProviderConfigStore(),
     repository,
-    new ProjectAiContextBroker(project),
+    new ProjectAiContextBroker(project, history),
     project,
     proposals
   );
-  return { project, ai };
+  return { project, ai, history };
 }
 
 export function createDesktopWindowPort(): TauriDesktopWindowAdapter {

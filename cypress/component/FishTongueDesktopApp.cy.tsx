@@ -163,9 +163,11 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("button[form='lexeme-editor-form']").should("be.visible");
     cy.get("#lexeme-editor-form input[name='lexeme-romanized']").should("be.enabled");
     cy.get("#lexeme-editor-form input[name='lexeme-romanized']").type("ama");
-    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").clear();
-    cy.get("input[name='lexeme-part-of-speech']").should("be.enabled").type("名词");
-    cy.get("textarea[name='lexeme-senses']")
+    cy.get("#lexeme-editor-form input[name='lexeme-part-of-speech']")
+      .should("be.enabled")
+      .clear()
+      .type("名词");
+    cy.get("#lexeme-editor-form textarea[name='lexeme-senses']")
       .should("be.enabled")
       .type("母亲{enter}女性长辈", { force: true });
     cy.get("button[form='lexeme-editor-form']").click();
@@ -317,7 +319,7 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     }
     cy.contains("button", "项目主页").first().click();
     cy.contains("button", "阿兰语").first().click();
-    for (const page of ["语音学", "形态学", "书写系统", "演化", "语言接触", "辅助翻译"]) {
+    for (const page of ["语音学", "形态学", "书写系统", "演化", "词源与接触", "辅助翻译"]) {
       cy.contains("button", page).first().click();
       cy.contains("h1", page).should("be.visible");
       cy.contains("设计预览").should("be.visible");

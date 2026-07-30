@@ -1,6 +1,36 @@
 # FishTongue 开发上下文
 
-## Phase 4 实施边界
+## Phase 5 实施边界
+
+- Phase 4 已通过外部 Windows 人工验收并由 `phase-4.0.1` 标签封存。
+- Phase 5 使用 Schema v8；发布过的 v1～v7 迁移不可修改。
+- 每门语言由 v8 迁移或新语言触发器创建一个隐藏的 `internal_default` 状态。它是旧词典、
+  语素、演化、屈折和造词配置的安全锚点，不可删除。
+- 历史阶段和轻量方言通过 `data_base_stage_id` 继承数据，通过
+  `chronology_parent_id` 表达时间顺序；两条边不得混为一谈。
+- `StageStateResolver` 是阶段有效状态的唯一正式解析入口。它按基础状态应用
+  replace、merge 和 remove 差异，并拒绝循环或过深继承。
+- `unrecorded` 阶段固定使用 `no_data`，只允许背景、证据和关系，不得保存语言组件。
+- 项目允许多个根语言；主要遗传父级由数据库部分唯一索引限制为一个，接触关系单独保存。
+- Phase 5 组合根在 `bootstrap.ts` 中装配 `HistoryApplicationService`、`StageStateResolver` 与五个 SQLite Repository；
+  React 的历史工作区只依赖 `Phase5Application`。
+- 正向演化先生成 `stage_evolution_batches` 审核批次；只有被接受且无冲突的候选才以事务
+  写入目标阶段的词典差异。来源阶段永远不修改，最近提交可在目标差异未被编辑时撤销。
+- AI Context Broker 只读阶段、谱系、历史事件和词源，并把项目文字视为不可信数据；
+  Phase 5 不授予 AI 绕过编辑器或 Repository 写入历史数据的权限。
+
+### Phase 5 依赖方向
+
+```text
+HistoryWorkspaces
+→ Phase5Application
+→ HistoryApplicationService / StageStateResolver
+→ Phase 5 Repository Ports
+→ SQLite Adapters
+→ Schema v8
+```
+
+## Phase 4 已封存边界
 
 - Schema v3 扩展 `lexemes`，并新增语素、造词配置、概念表、审核批次、候选和批量操作记录。
   数据库迁移 v4 修复候选撤销恢复，迁移 v5 增加批量选择写入、同一批次分次提交和逐次撤销，
@@ -164,6 +194,9 @@ npm run tauri:build
 npm run verify:phase1
 npm run verify:phase1-ui
 npm run verify:phase2
+npm run verify:phase3
+npm run verify:phase4
+npm run verify:phase5
 ```
 
 如果某项因本机工具或下载条件未运行，报告为“未验证”，不得写成通过。

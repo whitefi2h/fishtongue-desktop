@@ -8,8 +8,10 @@
 - 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
 - 候选不得绕过审核写入词典；批量提交和撤销必须保持原子性。
 - Phase 3 总验收命令是 `npm run verify:phase3`。
-- Phase 4 总验收命令是 `npm run verify:phase4`；外部人工验收前不得创建结项标签。
-- Phase 5 总验收命令规划为 `npm run verify:phase5`；外部人工验收前不得创建 Phase 5 结项标签。
+- Phase 4 已结项；其回归命令是 `npm run verify:phase4`。
+- Phase 5 数据库版本是 v8；旧语言和新语言都必须拥有一个不可删除的内部默认状态。
+- Phase 5 的时间父级与数据基础是两个独立关系；无记录阶段固定使用 `no_data`。
+- Phase 5 本机总验收已通过；总验收命令是 `npm run verify:phase5`。外部人工验收前不得创建 Phase 5 结项标签。
 - Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
 - API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
 
@@ -17,8 +19,8 @@
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
 - 再读 `.context/CONTEXT.md`；它记录当前代码的组合根、依赖方向和跨阶段接口边界。
-- Phase 1、Phase 1.5、Phase 2 和 Phase 3 已通过验收；Phase 4 实施基线见
-  `docs/phase-4-development-plan.md`。
+- Phase 1～Phase 4 已通过验收；Phase 5 实施基线见
+  `docs/phase-5-development-plan.md`。
 - Phase 1.5 的产品、信息架构和 UI/UX 以 `docs/phase-1-5-ui-ux-design-spec.md` 为最高优先级基线；与旧文档冲突时采用该方案。
 - Phase 3 只把通过真实 Repository 和 Sidecar 验证的词典、语素与造词能力标为
   可运行；其他设计稿、页面骨架或预留入口不得写成已经可用的功能。

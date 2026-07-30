@@ -3,6 +3,7 @@ import {
   InflectionRunInput,
 } from "@/fishtongue/application/ports/InflectionEngine";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import {
   EngineProgressEvent,
   LexurgyEngineStatus,
@@ -170,6 +171,68 @@ describe("Phase 2 engine workspaces", () => {
     cy.contains("button", "运行预览").click();
     cy.contains("button", "预览后保存").should("not.be.disabled").click().then(() => {
       expect(state.inflectionSaves).to.equal(1);
+    });
+  });
+
+  it("reviews forward evolution before writing only to the target stage", () => {
+    const { app } = application();
+    const now = "2026-07-30T00:00:00Z";
+    let batch: import("@/fishtongue/domain/models").StageEvolutionBatch | undefined;
+    let committed = false;
+    const history = {
+      listStages: async () => [
+        {
+          id: "source", languageId: "l1", name: "古典期", kind: "historical_stage",
+          documentationStatus: "recorded", storageMode: "independent_snapshot",
+          position: 1, visible: true, createdAt: now, updatedAt: now,
+        },
+        {
+          id: "target", languageId: "l1", name: "后期", kind: "historical_stage",
+          documentationStatus: "partial", storageMode: "inherited_delta",
+          dataBaseStageId: "source", position: 2, visible: true,
+          createdAt: now, updatedAt: now,
+        },
+      ],
+      listStageEvolutionBatches: async () => batch ? [structuredClone(batch)] : [],
+      listStageEvolutionOperations: async () => [],
+      resolveStage: async (id: string) => ({
+        stage: { id },
+        lineage: [id],
+        components: {
+          lexicon: id === "source" ? {
+            lexeme: {
+              id: "lexeme", languageId: "l1", romanized: "ama",
+              senses: [{ id: "sense", definition: "mother", position: 0 }],
+            },
+          } : {},
+          morphemes: {},
+          wordgen: {},
+        },
+        warnings: [],
+      }),
+      createStageEvolutionBatch: async (value: typeof batch) => { batch = structuredClone(value!); },
+      saveStageEvolutionCandidate: async (_batchId: string, candidate: NonNullable<typeof batch>["candidates"][number]) => {
+        batch!.candidates = batch!.candidates.map((item) =>
+          item.id === candidate.id ? structuredClone(candidate) : item);
+      },
+      commitStageEvolutionBatch: async () => { committed = true; batch!.status = "committed"; },
+    } as unknown as Phase5Application;
+
+    cy.mount(<EvolutionWorkspace
+      application={app}
+      service={new SoundChangeService(new TestSoundEngine())}
+      historyApplication={history}
+      languageId="l1"
+      selectedStageId="source"
+      live
+    />);
+    cy.contains("button", "生成审核批次").click();
+    cy.contains("td", "ama").should("be.visible");
+    cy.get('input[type="checkbox"]').check();
+    cy.contains("button", "提交到目标阶段").click().then(() => {
+      expect(committed).to.equal(true);
+      expect(batch?.sourceStageId).to.equal("source");
+      expect(batch?.targetStageId).to.equal("target");
     });
   });
 });

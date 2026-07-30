@@ -1,4 +1,5 @@
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import { normalizeInflectionRules } from "@/fishtongue/application/services/AiProposalService";
 import {
@@ -10,6 +11,9 @@ import SoundChangeService from "@/fishtongue/application/services/SoundChangeSer
 import {
   Evolution,
   InflectionSystem,
+  LanguageStage,
+  StageEvolutionBatch,
+  StageEvolutionOperation,
 } from "@/fishtongue/domain/models";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import ScCodeEditor from "@/sc/ScCodeEditor";
@@ -30,6 +34,8 @@ export function EvolutionWorkspace({
   live,
   aiDraft,
   onAiDraftConsumed,
+  historyApplication,
+  selectedStageId,
 }: {
   application: ProjectApplication;
   service?: SoundChangeService;
@@ -37,6 +43,8 @@ export function EvolutionWorkspace({
   live: boolean;
   aiDraft?: AiProposalDraft;
   onAiDraftConsumed?: (requestId: string) => void;
+  historyApplication?: Phase5Application;
+  selectedStageId?: string;
 }) {
   const enabled = live && Boolean(service);
   const [evolution, setEvolution] = useState<Evolution | null>(null);
@@ -48,6 +56,11 @@ export function EvolutionWorkspace({
   const [error, setError] = useState<string>();
   const [dirty, setDirty] = useState(false);
   const [aiPending, setAiPending] = useState(false);
+  const [stages, setStages] = useState<LanguageStage[]>([]);
+  const [sourceStageId, setSourceStageId] = useState(selectedStageId ?? "");
+  const [targetStageId, setTargetStageId] = useState("");
+  const [stageBatches, setStageBatches] = useState<StageEvolutionBatch[]>([]);
+  const [stageOperations, setStageOperations] = useState<StageEvolutionOperation[]>([]);
   const controller = useRef<AbortController>();
   const processedDraft = useRef<string>();
 
@@ -71,6 +84,30 @@ export function EvolutionWorkspace({
       })
       .catch((reason) => setError(errorMessage(reason)));
   }, [application, enabled, languageId, service]);
+
+  useEffect(() => {
+    if (!historyApplication || !live) return;
+    void Promise.all([
+      historyApplication.listStages(languageId),
+      historyApplication.listStageEvolutionBatches(languageId),
+      historyApplication.listStageEvolutionOperations(languageId),
+    ]).then(([nextStages, batches, operations]) => {
+      setStages(nextStages);
+      setStageBatches(batches);
+      setStageOperations(operations);
+      const defaultStage = nextStages.find((stage) => stage.kind === "internal_default");
+      const sourceId = nextStages.some((stage) => stage.id === selectedStageId)
+        ? selectedStageId!
+        : defaultStage?.id ?? "";
+      setSourceStageId(sourceId);
+      setTargetStageId((current) => current &&
+        nextStages.some((stage) => stage.id === current && current !== sourceId)
+        ? current
+        : nextStages.find((stage) =>
+          stage.id !== sourceId && stage.storageMode !== "no_data"
+        )?.id ?? "");
+    }).catch((reason) => setError(errorMessage(reason)));
+  }, [historyApplication, languageId, live, selectedStageId]);
 
   useEffect(() => {
     if (
@@ -202,6 +239,71 @@ export function EvolutionWorkspace({
     }
   };
 
+  const createStageReview = async () => {
+    if (!historyApplication || !service || !sourceStageId || !targetStageId) return;
+    setError(undefined);
+    setStatus("正在生成阶段演化审核…");
+    try {
+      const [sourceState, targetState] = await Promise.all([
+        historyApplication.resolveStage(sourceStageId),
+        historyApplication.resolveStage(targetStageId),
+      ]);
+      const entries = Object.values(sourceState.components.lexicon);
+      const words = entries.map((entry) => String(entry.romanized ?? "")).filter(Boolean);
+      if (!words.length) throw new Error("来源阶段没有可演化的词条。");
+      const preview = await service.run(
+        { changes: evolution.soundChanges, inputWords: words, traceWords: [] },
+        (event) => setStatus(event.message)
+      );
+      const targetForms = new Map(
+        Object.entries(targetState.components.lexicon).map(([id, entry]) => [
+          String(entry.romanized ?? "").normalize("NFC").toLocaleLowerCase(),
+          id,
+        ])
+      );
+      const now = new Date().toISOString();
+      const batch: StageEvolutionBatch = {
+        id: uuid(),
+        languageId,
+        sourceStageId,
+        targetStageId,
+        rulesSnapshot: evolution.soundChanges,
+        inputSnapshot: entries.map((entry, index) => ({
+          lexemeId: String(entry.id ?? `source-${index}`),
+          form: words[index],
+        })),
+        status: "draft",
+        createdAt: now,
+        candidates: entries.map((entry, index) => {
+          const sourceId = String(entry.id ?? `source-${index}`);
+          const resultForm = preview.outputWords[index] ?? words[index];
+          const occupiedBy = targetForms.get(
+            resultForm.normalize("NFC").toLocaleLowerCase()
+          );
+          return {
+            id: uuid(),
+            sourceLexemeId: sourceId,
+            sourceForm: words[index],
+            resultForm,
+            payload: { ...entry, romanized: resultForm },
+            status: "pending",
+            conflicts: occupiedBy && occupiedBy !== sourceId ? [{
+              code: "DUPLICATE_LEXEME" as const,
+              message: "目标阶段已有相同词形。",
+            }] : [],
+            position: index,
+          };
+        }),
+      };
+      await historyApplication.createStageEvolutionBatch(batch);
+      setStageBatches(await historyApplication.listStageEvolutionBatches(languageId));
+      setStatus(`已创建 ${batch.candidates.length} 项阶段演化审核；尚未写入目标阶段。`);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      setStatus("阶段演化审核未创建");
+    }
+  };
+
   const firstIssue = validation && !validation.valid ? validation.issues[0] : undefined;
   return <div className={styles.pageGrid}>
     <div className={styles.tabStrip}>
@@ -267,6 +369,98 @@ export function EvolutionWorkspace({
     </section>
     {error && <EngineError message={error} />}
     {result && <SoundChangeResults inputWords={inputWords} result={result} />}
+    {historyApplication && stages.length > 1 && <section className={styles.surfacePanel}>
+      <div className={styles.panelHeading}><h2>创建下一阶段</h2>
+        <span>先审核，后写入目标阶段</span></div>
+      <div className={styles.stageEvolutionToolbar}>
+        <label>来源阶段<select value={sourceStageId}
+          onChange={(event) => setSourceStageId(event.target.value)}>
+          {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+        </select></label>
+        <label>目标阶段<select value={targetStageId}
+          onChange={(event) => setTargetStageId(event.target.value)}>
+          <option value="">请选择</option>
+          {stages.filter((stage) =>
+            stage.id !== sourceStageId && stage.storageMode !== "no_data"
+          ).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+        </select></label>
+        <button className={styles.primaryButton} disabled={!targetStageId}
+          onClick={() => void createStageReview()}>生成审核批次</button>
+      </div>
+      <StageEvolutionReview
+        application={historyApplication}
+        batches={stageBatches}
+        operations={stageOperations}
+        onChanged={async () => {
+          const [batches, operations] = await Promise.all([
+            historyApplication.listStageEvolutionBatches(languageId),
+            historyApplication.listStageEvolutionOperations(languageId),
+          ]);
+          setStageBatches(batches);
+          setStageOperations(operations);
+        }}
+        onError={(reason) => setError(errorMessage(reason))}
+      />
+    </section>}
+  </div>;
+}
+
+function StageEvolutionReview({
+  application,
+  batches,
+  operations,
+  onChanged,
+  onError,
+}: {
+  application: Phase5Application;
+  batches: StageEvolutionBatch[];
+  operations: StageEvolutionOperation[];
+  onChanged: () => Promise<void>;
+  onError: (reason: unknown) => void;
+}) {
+  const batch = batches.find((value) => value.status === "draft");
+  const activeOperation = operations.find((value) => !value.undoneAt);
+  if (!batch) return <div className={styles.stageEvolutionEmpty}>
+    <p className={styles.engineEmpty}>没有待审核的阶段演化批次。</p>
+    {activeOperation && <button
+      onClick={() => {
+        void application.undoStageEvolutionOperation(activeOperation.id)
+          .then(onChanged).catch(onError);
+      }}>撤销最近的阶段提交</button>}
+  </div>;
+  return <div className={styles.stageEvolutionReview}>
+    <table className={styles.dataTable}><thead><tr>
+      <th>保留</th><th>来源</th><th>结果</th><th>状态</th>
+    </tr></thead><tbody>{batch.candidates.map((candidate) => <tr key={candidate.id}>
+      <td><input type="checkbox" checked={candidate.status === "accepted"}
+        disabled={candidate.status === "committed"}
+        onChange={(event) => {
+          void application.saveStageEvolutionCandidate(batch.id, {
+            ...candidate,
+            status: event.target.checked ? "accepted" : "rejected",
+          }).then(onChanged).catch(onError);
+        }} /></td>
+      <td>{candidate.sourceForm}</td>
+      <td><input value={candidate.resultForm}
+        onChange={(event) => {
+          void application.saveStageEvolutionCandidate(batch.id, {
+            ...candidate, resultForm: event.target.value,
+          }).then(onChanged).catch(onError);
+        }} /></td>
+      <td>{candidate.conflicts.length ? candidate.conflicts[0].message :
+        candidate.status === "accepted" ? "已接受" :
+        candidate.status === "rejected" ? "已拒绝" : "待审核"}</td>
+    </tr>)}</tbody></table>
+    <div className={styles.engineActions}>
+      <button className={styles.primaryButton}
+        disabled={!batch.candidates.some((value) =>
+          value.status === "accepted" && !value.conflicts.length
+        )}
+        onClick={() => {
+          void application.commitStageEvolutionBatch(batch.id)
+            .then(onChanged).catch(onError);
+        }}>提交到目标阶段</button>
+    </div>
   </div>;
 }
 

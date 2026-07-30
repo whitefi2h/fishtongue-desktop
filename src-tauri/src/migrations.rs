@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 7;
+pub const DATABASE_SCHEMA_VERSION: u32 = 8;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -42,9 +42,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 7,
             description: "repair_phase_4_proposal_limit",
             sql: include_str!("../migrations/0007_phase_4_proposal_limit.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "create_phase_5_history_genealogy_schema",
+            sql: include_str!("../migrations/0008_phase_5_history_genealogy.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -86,6 +92,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply Phase 4 proposal-limit repair");
+        sqlx::raw_sql(include_str!("../migrations/0008_phase_5_history_genealogy.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 5 history and genealogy schema");
         connection
     }
 
@@ -528,5 +538,198 @@ mod tests {
                 .unwrap()
                 .get("count");
         assert_eq!((rejected_message_count, rejected_proposal_count), (0, 0));
+    }
+
+    #[tokio::test]
+    async fn schema_v8_creates_one_internal_default_stage_for_old_and_new_languages() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let row = sqlx::query(
+            "SELECT kind, visible, storage_mode FROM language_stages WHERE language_id = 'l'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        assert_eq!(row.get::<String, _>("kind"), "internal_default");
+        assert_eq!(row.get::<i64, _>("visible"), 0);
+        assert_eq!(row.get::<String, _>("storage_mode"), "independent_snapshot");
+    }
+
+    #[tokio::test]
+    async fn schema_v8_protects_unrecorded_stages_and_primary_parent_uniqueness() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('a', 'p', 'A', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('b', 'p', 'B', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('c', 'p', 'C', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO language_relations VALUES (
+              'r1', 'p', 'a', 'c', NULL, NULL, 'genetic', 1, 'confirmed', '',
+              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let invalid_stage = sqlx::query(
+            r#"INSERT INTO language_stages VALUES (
+              's', 'a', 'Unknown', 'historical_stage', 'unrecorded',
+              'inherited_delta', NULL, 'a:default-stage', '', '', 1, 1,
+              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            )"#,
+        )
+        .execute(&mut database)
+        .await;
+        assert!(invalid_stage.is_err());
+
+        let second_primary = sqlx::query(
+            r#"INSERT INTO language_relations VALUES (
+              'r2', 'p', 'b', 'c', NULL, NULL, 'genetic', 1, 'confirmed', '',
+              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            )"#,
+        )
+        .execute(&mut database)
+        .await;
+        assert!(second_primary.is_err());
+    }
+
+    #[tokio::test]
+    async fn schema_v8_atomically_replaces_historical_event_participants() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO historical_event_write_commands VALUES (
+              'e', 'p', 'Migration', 'migration', '100', '200', 'Northward',
+              0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z',
+              '[{"languageId":"l","stageId":null,"role":"participant","notes":""}]'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let command_count: i64 =
+            sqlx::query("SELECT count(*) count FROM historical_event_write_commands")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        let participant_count: i64 =
+            sqlx::query("SELECT count(*) count FROM historical_event_participants")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        assert_eq!((command_count, participant_count), (0, 1));
+    }
+
+    #[tokio::test]
+    async fn schema_v8_commits_and_undoes_forward_evolution_without_changing_source() {
+        use serde_json::json;
+
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO languages VALUES ('l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO lexeme_write_commands (
+              id, language_id, romanized, part_of_speech, created_at, updated_at,
+              senses_json, ipa, status, source_type, notes, morphemes_json
+            ) VALUES (
+              'x', 'l', 'aka', 'noun', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z',
+              '[{"id":"s","definition":"fish","position":0}]', '', 'confirmed', 'manual', '', '[]'
+            );
+            INSERT INTO language_stages VALUES (
+              'target', 'l', 'Later', 'historical_stage', 'recorded',
+              'inherited_delta', 'l:default-stage', 'l:default-stage', '', '', 1, 1,
+              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+        let payload = json!({
+            "id": "x",
+            "languageId": "l",
+            "romanized": "eke",
+            "senses": [{"id":"s","definition":"fish","position":0}]
+        })
+        .to_string();
+        let candidates = json!([{
+            "id": "c",
+            "sourceLexemeId": "x",
+            "sourceForm": "aka",
+            "resultForm": "eke",
+            "payloadJson": payload,
+            "status": "accepted",
+            "conflictJson": "[]",
+            "position": 0
+        }])
+        .to_string();
+        sqlx::query(
+            "INSERT INTO stage_evolution_batch_write_commands VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        )
+        .bind("b")
+        .bind("l")
+        .bind("l:default-stage")
+        .bind("target")
+        .bind("raising:\na => e")
+        .bind(r#"[{"lexemeId":"x","form":"aka"}]"#)
+        .bind("2026-01-02T00:00:00Z")
+        .bind(candidates)
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        sqlx::query("INSERT INTO stage_evolution_commit_commands VALUES ('o','b',?1)")
+            .bind("2026-01-03T00:00:00Z")
+            .execute(&mut database)
+            .await
+            .unwrap();
+
+        let source_form: String =
+            sqlx::query("SELECT romanized FROM lexemes WHERE id = 'x'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("romanized");
+        let target_form: String = sqlx::query(
+            "SELECT json_extract(payload_json, '$.romanized') form \
+             FROM stage_component_overrides WHERE stage_id = 'target'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap()
+        .get("form");
+        assert_eq!((source_form, target_form), ("aka".into(), "eke".into()));
+
+        sqlx::query("INSERT INTO stage_evolution_undo_commands VALUES ('o', ?1)")
+            .bind("2026-01-04T00:00:00Z")
+            .execute(&mut database)
+            .await
+            .unwrap();
+        let remaining: i64 =
+            sqlx::query("SELECT count(*) count FROM stage_component_overrides")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        assert_eq!(remaining, 0);
     }
 }

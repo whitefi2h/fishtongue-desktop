@@ -1,5 +1,6 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
@@ -12,6 +13,13 @@ import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineW
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
 import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
 import { AiSettingsPage, AiSidebar as LiveAiSidebar } from "@/fishtongue/ui/AiWorkspace";
+import {
+  DialectsWorkspace,
+  EtymologyWorkspace,
+  EventsWorkspace,
+  GenealogyWorkspace,
+  StagesWorkspace,
+} from "@/fishtongue/ui/HistoryWorkspaces";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
 import { t } from "@/fishtongue/ui/prototype/i18n";
 import { routeRegistry, routesById } from "@/fishtongue/ui/prototype/registry";
@@ -149,6 +157,7 @@ export default function FishTongueDesktopApp({
   inflectionService,
   wordGenerationService,
   aiApplication,
+  historyApplication,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
@@ -156,6 +165,7 @@ export default function FishTongueDesktopApp({
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
   aiApplication?: AiApplication;
+  historyApplication?: Phase5Application;
 }) {
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -194,6 +204,30 @@ export default function FishTongueDesktopApp({
   );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
+
+  useEffect(() => {
+    if (!snapshot || !historyApplication ||
+        !snapshot.languages.some((language) => language.id === selectedLanguage.id)) return;
+    void historyApplication.listStages(selectedLanguage.id).then((stages) => {
+      const visible = stages.filter((stage) => stage.visible).map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        years: [stage.startLabel, stage.endLabel].filter(Boolean).join("—") || "年代未设置",
+        documentation: stage.documentationStatus,
+      }));
+      setSelectedLanguage((current) => current.id === selectedLanguage.id
+        ? { ...current, stages: visible }
+        : current);
+      setSelectedStage((current) =>
+        visible.find((stage) => stage.id === current?.id) ?? visible[0]
+      );
+    }).catch((reason) => setMessage(`无法读取阶段：${errorMessage(reason)}`));
+  }, [
+    historyApplication,
+    projectDataRefreshRequest,
+    selectedLanguage.id,
+    snapshot,
+  ]);
 
   const requestClose = useCallback(async () => {
     if (closingRef.current) return;
@@ -517,6 +551,7 @@ export default function FishTongueDesktopApp({
                 inflectionService={inflectionService}
                 wordGenerationService={wordGenerationService}
                 aiApplication={aiApplication}
+                historyApplication={historyApplication}
                 aiProposalDraft={aiProposalDraft}
                 projectDataRefreshRequest={projectDataRefreshRequest}
                 onAiProposalConsumed={(requestId) => {
@@ -961,6 +996,7 @@ function PageContent(props: {
   inflectionService?: InflectionService;
   wordGenerationService?: WordGenerationService;
   aiApplication?: AiApplication;
+  historyApplication?: Phase5Application;
   aiProposalDraft?: AiProposalDraft;
   projectDataRefreshRequest: number;
   onAiProposalConsumed: (requestId: string) => void;
@@ -980,13 +1016,42 @@ function PageContent(props: {
   switch (props.route) {
     case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
     case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
-    case "genealogy": return props.snapshot ? <LiveProjectPlaceholder title="语言谱系尚未接入真实项目" /> : <GenealogyPage onLanguage={props.onLanguage} />;
-    case "events": return props.snapshot ? <LiveProjectPlaceholder title="历史事件尚未接入真实项目" /> : <EventsPage />;
+    case "genealogy": return props.snapshot && props.historyApplication
+      ? <GenealogyWorkspace application={props.historyApplication}
+          languages={props.snapshot.languages}
+          onChanged={() => props.onStatus("语言关系已更新。")}
+          onStatus={props.onStatus} />
+      : <GenealogyPage onLanguage={props.onLanguage} />;
+    case "events": return props.snapshot && props.historyApplication
+      ? <EventsWorkspace application={props.historyApplication}
+          languages={props.snapshot.languages}
+          onChanged={() => props.onStatus("历史事件已更新。")}
+          onStatus={props.onStatus} />
+      : <EventsPage />;
     case "project-settings": return props.snapshot ? <LiveProjectPlaceholder title="项目设置尚未接入真实项目" /> : <SettingsPage />;
     case "language-overview": return <LanguageOverview language={props.language} />;
     case "language-properties": return <PropertiesPage language={props.language} />;
-    case "stages": return <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
-    case "dialects": return <DialectsPage />;
+    case "stages": return props.snapshot && props.historyApplication
+      ? <StagesWorkspace application={props.historyApplication}
+          languages={props.snapshot.languages}
+          languageId={props.language.id}
+          selectedStageId={props.selectedStage?.id}
+          onSelectStage={(stage) => props.onStage(stage ? {
+            id: stage.id,
+            name: stage.name,
+            years: [stage.startLabel, stage.endLabel].filter(Boolean).join("—") || "年代未设置",
+            documentation: stage.documentationStatus,
+          } : undefined)}
+          onChanged={() => props.onStatus("阶段数据已更新。")}
+          onStatus={props.onStatus} />
+      : <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
+    case "dialects": return props.snapshot && props.historyApplication
+      ? <DialectsWorkspace application={props.historyApplication}
+          languages={props.snapshot.languages}
+          languageId={props.language.id}
+          onChanged={() => props.onStatus("方言数据已更新。")}
+          onStatus={props.onStatus} />
+      : <DialectsPage />;
     case "phonology": return <PhonologyPage />;
     case "morphology": return props.snapshot
       ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} refreshRequest={props.projectDataRefreshRequest} />
@@ -1014,8 +1079,18 @@ function PageContent(props: {
         />
       : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;
-    case "evolution": return <EvolutionWorkspace application={props.application} service={props.soundChangeService} languageId={props.language.id} live={liveLanguage} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} />;
-    case "contact": return <ContactPage />;
+    case "evolution": return <EvolutionWorkspace application={props.application}
+      service={props.soundChangeService} languageId={props.language.id}
+      live={liveLanguage} aiDraft={props.aiProposalDraft}
+      onAiDraftConsumed={props.onAiProposalConsumed}
+      historyApplication={props.historyApplication}
+      selectedStageId={props.selectedStage?.id} />;
+    case "contact": return props.snapshot && props.historyApplication
+      ? <EtymologyWorkspace application={props.historyApplication}
+          project={props.application} languages={props.snapshot.languages}
+          onChanged={() => props.onStatus("词源关系已更新。")}
+          onStatus={props.onStatus} />
+      : <ContactPage />;
     case "translation": return <TranslationPage />;
     case "developer-tools": return <DeveloperToolsPage />;
     case "ai-settings": return props.aiApplication

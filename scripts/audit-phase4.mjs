@@ -36,7 +36,7 @@ for (const forbidden of ["api_key", "authorization", "secret TEXT"]) {
 if (!migration.includes("json_array_length(NEW.proposals_json) > 5")) {
   failures.push("Published Schema v6 migration was modified; released migrations must remain immutable");
 }
-if (createHash("sha384").update(migration).digest("hex") !== publishedSchemaV6Sha384) {
+if (createHash("sha384").update(migration.replace(/\r\n/g, "\n")).digest("hex") !== publishedSchemaV6Sha384) {
   failures.push("Published Schema v6 migration checksum no longer matches released projects");
 }
 const proposalLimitRepair = read("src-tauri/migrations/0007_phase_4_proposal_limit.sql");

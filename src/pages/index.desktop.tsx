@@ -23,6 +23,7 @@ export default function FishTongueDesktop() {
       inflectionService={inflectionService}
       wordGenerationService={wordGenerationService}
       aiApplication={applications.ai}
+      historyApplication={applications.history}
     />
   );
 }

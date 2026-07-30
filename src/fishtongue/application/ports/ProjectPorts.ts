@@ -13,6 +13,15 @@ import {
   ProjectSession,
   RecentProject,
   RecoveryCandidate,
+  EtymologyRelation,
+  HistoricalEvent,
+  LanguageRelation,
+  LanguageStage,
+  StageComponentOverride,
+  StageContextRecord,
+  StageEvolutionBatch,
+  StageEvolutionCandidate,
+  StageEvolutionOperation,
 } from "@/fishtongue/domain/models";
 
 export interface ProjectFilePort {
@@ -97,4 +106,45 @@ export interface RecentProjectStore {
   list(): Promise<RecentProject[]>;
   remember(project: RecentProject): Promise<void>;
   remove(path: string): Promise<void>;
+}
+
+export interface LanguageStageRepository {
+  list(languageId: string): Promise<LanguageStage[]>;
+  get(id: string): Promise<LanguageStage | null>;
+  save(stage: LanguageStage): Promise<void>;
+  delete(id: string): Promise<void>;
+  getContext(stageId: string): Promise<StageContextRecord | null>;
+  saveContext(context: StageContextRecord): Promise<void>;
+  listOverrides(stageId: string): Promise<StageComponentOverride[]>;
+  saveOverride(value: StageComponentOverride): Promise<void>;
+  deleteOverride(id: string): Promise<void>;
+}
+
+export interface LanguageRelationRepository {
+  list(projectId: string): Promise<LanguageRelation[]>;
+  save(relation: LanguageRelation): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface HistoricalEventRepository {
+  list(projectId: string): Promise<HistoricalEvent[]>;
+  save(event: HistoricalEvent): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface EtymologyRepository {
+  list(projectId: string): Promise<EtymologyRelation[]>;
+  listForLexeme(lexemeId: string): Promise<EtymologyRelation[]>;
+  save(relation: EtymologyRelation): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface StageEvolutionRepository {
+  list(languageId: string): Promise<StageEvolutionBatch[]>;
+  get(id: string): Promise<StageEvolutionBatch | null>;
+  create(batch: StageEvolutionBatch): Promise<void>;
+  saveCandidate(batchId: string, candidate: StageEvolutionCandidate): Promise<void>;
+  commit(batchId: string, operationId: string, committedAt: string): Promise<void>;
+  listOperations(languageId: string): Promise<StageEvolutionOperation[]>;
+  undo(operationId: string, undoneAt: string): Promise<void>;
 }
