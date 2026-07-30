@@ -1,7 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DATABASE_URL: &str = "sqlite:active-project/project.db";
-pub const DATABASE_SCHEMA_VERSION: u32 = 8;
+pub const DATABASE_SCHEMA_VERSION: u32 = 9;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -48,9 +48,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 8,
             description: "create_phase_5_history_genealogy_schema",
             sql: include_str!("../migrations/0008_phase_5_history_genealogy.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "repair_phase_5_atomic_stage_save",
+            sql: include_str!("../migrations/0009_phase_5_stage_save_repair.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -96,6 +102,10 @@ mod tests {
             .execute(&mut connection)
             .await
             .expect("apply Phase 5 history and genealogy schema");
+        sqlx::raw_sql(include_str!("../migrations/0009_phase_5_stage_save_repair.sql"))
+            .execute(&mut connection)
+            .await
+            .expect("apply Phase 5 atomic stage save repair");
         connection
     }
 
@@ -636,6 +646,126 @@ mod tests {
                 .unwrap()
                 .get("count");
         assert_eq!((command_count, participant_count), (0, 1));
+    }
+
+    #[tokio::test]
+    async fn schema_v9_atomically_saves_a_stage_with_its_context() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES (
+              'p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            INSERT INTO languages VALUES (
+              'l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        // Position 0 is already occupied by the internal default stage. The
+        // command repairs that collision while keeping the whole edit atomic.
+        sqlx::query(
+            r#"INSERT INTO language_stage_write_commands VALUES (
+              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+              ?13, ?14, ?15, ?16, ?17
+            )"#,
+        )
+        .bind("stage")
+        .bind("l")
+        .bind("古典期")
+        .bind("historical_stage")
+        .bind("partial")
+        .bind("inherited_delta")
+        .bind("l:default-stage")
+        .bind("l:default-stage")
+        .bind("前 400")
+        .bind("前 100")
+        .bind(0_i64)
+        .bind(1_i64)
+        .bind("2026-01-02T00:00:00Z")
+        .bind("2026-01-02T00:00:00Z")
+        .bind("城邦时代")
+        .bind("资料不完整")
+        .bind(r#"["碑铭","手稿"]"#)
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let stage = sqlx::query(
+            "SELECT name, position FROM language_stages WHERE id = 'stage'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let context = sqlx::query(
+            "SELECT background, sources_json FROM stage_context_records WHERE stage_id = 'stage'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let command_count: i64 =
+            sqlx::query("SELECT count(*) count FROM language_stage_write_commands")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+
+        assert_eq!(stage.get::<String, _>("name"), "古典期");
+        assert_eq!(stage.get::<i64, _>("position"), 1);
+        assert_eq!(context.get::<String, _>("background"), "城邦时代");
+        assert_eq!(
+            context.get::<String, _>("sources_json"),
+            r#"["碑铭","手稿"]"#
+        );
+        assert_eq!(command_count, 0);
+    }
+
+    #[tokio::test]
+    async fn schema_v9_rolls_back_the_stage_when_its_context_is_invalid() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES (
+              'p', 'Project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            INSERT INTO languages VALUES (
+              'l', 'p', 'Language', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+
+        let result = sqlx::query(
+            r#"INSERT INTO language_stage_write_commands VALUES (
+              'stage', 'l', '古典期', 'historical_stage', 'partial',
+              'inherited_delta', 'missing-stage', 'l:default-stage', '', '',
+              1, 1, '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z',
+              '', '', '[]'
+            )"#,
+        )
+        .execute(&mut database)
+        .await;
+        assert!(result.is_err());
+
+        let stage_count: i64 =
+            sqlx::query("SELECT count(*) count FROM language_stages WHERE id = 'stage'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap()
+                .get("count");
+        let context_count: i64 = sqlx::query(
+            "SELECT count(*) count FROM stage_context_records WHERE stage_id = 'stage'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap()
+        .get("count");
+        assert_eq!((stage_count, context_count), (0, 0));
     }
 
     #[tokio::test]

@@ -40,14 +40,24 @@ export default class HistoryApplicationService implements Phase5Application {
     this.requireProject();
     const existing = await this.stages.list(value.languageId);
     assertStageLinks(value, existing);
-    await this.stages.save({
-      ...value,
-      name: requiredText(value.name, "阶段名称"),
-      startLabel: value.startLabel.trim(),
-      endLabel: value.endLabel.trim(),
-      visible: value.kind !== "internal_default",
-      updatedAt: new Date().toISOString(),
-    });
+    await this.stages.save(normalizeStage(value));
+    await this.project.markProjectChanged();
+  }
+
+  async saveStageWithContext(
+    value: LanguageStage,
+    context: StageContextRecord
+  ): Promise<void> {
+    this.requireProject();
+    if (context.stageId !== value.id) {
+      throw new Error("阶段说明与当前阶段不一致，已停止保存。");
+    }
+    const existing = await this.stages.list(value.languageId);
+    assertStageLinks(value, existing);
+    await this.stages.saveWithContext(
+      normalizeStage(value),
+      normalizeStageContext(context)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -69,13 +79,7 @@ export default class HistoryApplicationService implements Phase5Application {
 
   async saveStageContext(value: StageContextRecord): Promise<void> {
     this.requireProject();
-    await this.stages.saveContext({
-      ...value,
-      background: value.background.trim(),
-      evidenceNotes: value.evidenceNotes.trim(),
-      sources: value.sources.map((source) => source.trim()).filter(Boolean),
-      updatedAt: new Date().toISOString(),
-    });
+    await this.stages.saveContext(normalizeStageContext(value));
     await this.project.markProjectChanged();
   }
 
@@ -300,6 +304,27 @@ function assertStageLinks(value: LanguageStage, stages: LanguageStage[]): void {
     seen.add(cursor);
     cursor = parents.get(cursor);
   }
+}
+
+function normalizeStage(value: LanguageStage): LanguageStage {
+  return {
+    ...value,
+    name: requiredText(value.name, "阶段名称"),
+    startLabel: value.startLabel.trim(),
+    endLabel: value.endLabel.trim(),
+    visible: value.kind !== "internal_default",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeStageContext(value: StageContextRecord): StageContextRecord {
+  return {
+    ...value,
+    background: value.background.trim(),
+    evidenceNotes: value.evidenceNotes.trim(),
+    sources: value.sources.map((source) => source.trim()).filter(Boolean),
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function createsGeneticCycle(

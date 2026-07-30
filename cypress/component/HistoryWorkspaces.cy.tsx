@@ -33,6 +33,13 @@ function phase5() {
     saveStage: async (value: LanguageStage) => {
       stages = [...stages.filter((item) => item.id !== value.id), structuredClone(value)];
     },
+    saveStageWithContext: async (
+      value: LanguageStage,
+      context: StageContextRecord
+    ) => {
+      stages = [...stages.filter((item) => item.id !== value.id), structuredClone(value)];
+      contexts.set(context.stageId, structuredClone(context));
+    },
     deleteStage: async (id: string) => { stages = stages.filter((item) => item.id !== id); },
     getStageContext: async (id: string) => structuredClone(contexts.get(id) ?? null),
     saveStageContext: async (value: StageContextRecord) => {

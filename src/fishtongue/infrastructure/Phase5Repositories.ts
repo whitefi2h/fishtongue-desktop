@@ -101,6 +101,31 @@ export class SqliteLanguageStageRepository implements LanguageStageRepository {
     );
   }
 
+  async saveWithContext(
+    value: LanguageStage,
+    context: StageContextRecord
+  ): Promise<void> {
+    await this.database.execute(
+      `INSERT INTO language_stage_write_commands (
+         id, language_id, name, kind, documentation_status, storage_mode,
+         chronology_parent_id, data_base_stage_id, start_label, end_label,
+         position, visible, created_at, updated_at, background,
+         evidence_notes, sources_json
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+       )`,
+      [
+        value.id, value.languageId, value.name, value.kind,
+        value.documentationStatus, value.storageMode,
+        value.chronologyParentId ?? null, value.dataBaseStageId ?? null,
+        value.startLabel, value.endLabel, value.position,
+        value.visible ? 1 : 0, value.createdAt, value.updatedAt,
+        context.background, context.evidenceNotes,
+        JSON.stringify(context.sources),
+      ]
+    );
+  }
+
   delete(id: string): Promise<void> {
     return this.database.execute(
       "DELETE FROM language_stages WHERE id = $1 AND kind <> 'internal_default'",

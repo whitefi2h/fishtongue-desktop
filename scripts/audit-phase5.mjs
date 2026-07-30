@@ -40,7 +40,21 @@ for (const required of [
   if (!migration.includes(required)) failures.push(`Schema v8 is missing ${required}`);
 }
 
+const stageSaveRepair = read("src-tauri/migrations/0009_phase_5_stage_save_repair.sql");
+for (const required of [
+  "language_stage_write_commands",
+  "execute_language_stage_write",
+  "stage_context_records",
+  "ON CONFLICT(stage_id) DO UPDATE",
+]) {
+  if (!stageSaveRepair.includes(required)) {
+    failures.push(`Schema v9 stage-save repair is missing ${required}`);
+  }
+}
+
 const released = [
+  ["src-tauri/migrations/0008_phase_5_history_genealogy.sql",
+    "11522f3075dae822c9a04f7accc1ca4465e4922a61f85c9db871114ac19acef7424f9071c62dffde50e168236a5ae72f"],
   ["src-tauri/migrations/0006_phase_4_ai_assistant.sql",
     "1d0b57c7ec807a8d723cf97ab3ed3a462f3a9611206278159427ffb0e1f1e40fd281de5fa5c2b0e08aa90498c9a21196"],
 ];

@@ -78,7 +78,9 @@ export function EvolutionWorkspace({
       service.getEngineStatus(),
     ])
       .then(([nextEvolution, lexemes, engine]) => {
-        setEvolution(nextEvolution);
+        // A duplicate/late load must not overwrite an AI draft or a user edit
+        // that was already applied after the first load completed.
+        setEvolution((current) => current ?? nextEvolution);
         setLexiconWords(lexemes.map((lexeme) => lexeme.romanized));
         setStatus(engine.message);
       })

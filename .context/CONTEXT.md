@@ -3,7 +3,8 @@
 ## Phase 5 实施边界
 
 - Phase 4 已通过外部 Windows 人工验收并由 `phase-4.0.1` 标签封存。
-- Phase 5 使用 Schema v8；发布过的 v1～v7 迁移不可修改。
+- Phase 5 使用 Schema v9；发布过的 v1～v8 迁移不可修改。v9 通过命令表把阶段主体和
+  阶段上下文合并为一次原子写入，并在新建阶段位置冲突时安全分配下一个位置。
 - 每门语言由 v8 迁移或新语言触发器创建一个隐藏的 `internal_default` 状态。它是旧词典、
   语素、演化、屈折和造词配置的安全锚点，不可删除。
 - 历史阶段和轻量方言通过 `data_base_stage_id` 继承数据，通过
@@ -27,7 +28,7 @@ HistoryWorkspaces
 → HistoryApplicationService / StageStateResolver
 → Phase 5 Repository Ports
 → SQLite Adapters
-→ Schema v8
+→ Schema v9
 ```
 
 ## Phase 4 已封存边界

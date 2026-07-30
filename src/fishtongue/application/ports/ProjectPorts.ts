@@ -112,6 +112,10 @@ export interface LanguageStageRepository {
   list(languageId: string): Promise<LanguageStage[]>;
   get(id: string): Promise<LanguageStage | null>;
   save(stage: LanguageStage): Promise<void>;
+  saveWithContext(
+    stage: LanguageStage,
+    context: StageContextRecord
+  ): Promise<void>;
   delete(id: string): Promise<void>;
   getContext(stageId: string): Promise<StageContextRecord | null>;
   saveContext(context: StageContextRecord): Promise<void>;

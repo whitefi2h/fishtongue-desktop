@@ -14,6 +14,10 @@ import {
 export interface Phase5Application {
   listStages(languageId: string): Promise<LanguageStage[]>;
   saveStage(stage: LanguageStage): Promise<void>;
+  saveStageWithContext(
+    stage: LanguageStage,
+    context: StageContextRecord
+  ): Promise<void>;
   deleteStage(id: string): Promise<void>;
   getStageContext(stageId: string): Promise<StageContextRecord | null>;
   saveStageContext(context: StageContextRecord): Promise<void>;

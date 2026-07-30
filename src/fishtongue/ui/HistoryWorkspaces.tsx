@@ -119,8 +119,8 @@ export function StagesWorkspace(props: CommonProps & {
         onContext={setContext}
         onError={props.onStatus}
         onSave={async () => {
-          await props.application.saveStage(draft);
-          if (context) await props.application.saveStageContext(context);
+          if (!context) throw new Error("阶段说明仍在载入，请稍后再保存。");
+          await props.application.saveStageWithContext(draft, context);
           props.onStatus("阶段已保存；来源阶段保持不变。");
           props.onChanged();
           await load();
@@ -225,6 +225,7 @@ function StageEditor(props: {
       {props.onDelete && <button className={styles.danger}
         onClick={() => void props.onDelete?.().catch(report(props.onError))}>删除阶段</button>}
       <button className={styles.primary}
+        disabled={!context}
         onClick={() => void props.onSave().catch(report(props.onError))}>保存阶段</button>
     </footer>
   </div>;
