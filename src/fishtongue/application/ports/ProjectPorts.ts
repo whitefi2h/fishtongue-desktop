@@ -53,6 +53,7 @@ export interface LanguageRepository {
   list(projectId: string): Promise<Language[]>;
   create(language: Language): Promise<void>;
   rename(id: string, name: string, updatedAt: string): Promise<void>;
+  updateProfile(id: string, profile: NonNullable<Language["profile"]>, updatedAt: string): Promise<void>;
   delete(id: string): Promise<void>;
 }
 

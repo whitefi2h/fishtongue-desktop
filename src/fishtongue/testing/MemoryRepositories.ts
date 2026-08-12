@@ -59,6 +59,11 @@ export class MemoryLanguageRepository implements LanguageRepository {
     if (language) this.values.set(id, { ...language, name, updatedAt });
   }
 
+  async updateProfile(id: string, profile: NonNullable<Language["profile"]>, updatedAt: string): Promise<void> {
+    const language = this.values.get(id);
+    if (language) this.values.set(id, { ...language, profile: clone(profile), updatedAt });
+  }
+
   async delete(id: string): Promise<void> {
     this.values.delete(id);
   }

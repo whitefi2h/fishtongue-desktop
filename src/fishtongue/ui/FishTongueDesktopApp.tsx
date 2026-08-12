@@ -1,6 +1,7 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
 import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
+import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
@@ -11,13 +12,16 @@ import {
 } from "@/fishtongue/application/ports/AiPorts";
 import { EvolutionWorkspace, InflectionWorkspace } from "@/fishtongue/ui/EngineWorkspaces";
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
+import PhonologyWorkspace from "@/fishtongue/ui/PhonologyWorkspace";
 import { MorphemeWorkspace, WordGenerationWorkspace } from "@/fishtongue/ui/Phase3Workspaces";
 import { AiSettingsPage, AiSidebar as LiveAiSidebar } from "@/fishtongue/ui/AiWorkspace";
 import {
   DialectsWorkspace,
+  EtymologyWorkspaceDraft,
   EtymologyWorkspace,
   EventsWorkspace,
   GenealogyWorkspace,
+  LanguagePropertiesWorkspace,
   StagesWorkspace,
 } from "@/fishtongue/ui/HistoryWorkspaces";
 import { prototypeProject } from "@/fishtongue/ui/prototype/data";
@@ -158,6 +162,7 @@ export default function FishTongueDesktopApp({
   wordGenerationService,
   aiApplication,
   historyApplication,
+  phase6Application,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
@@ -166,11 +171,20 @@ export default function FishTongueDesktopApp({
   wordGenerationService?: WordGenerationService;
   aiApplication?: AiApplication;
   historyApplication?: Phase5Application;
+  phase6Application?: Phase6Application;
 }) {
+  type LexiconEntryTab = "dictionary" | "profile" | "review";
+  type WorkspaceHistoryEntry = {
+    route: WorkspaceRoute;
+    languageId: string;
+    stageId?: string;
+    lexiconTab: LexiconEntryTab;
+    lexemeId?: string;
+  };
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
   const [route, setRoute] = useState<WorkspaceRoute>("project-home");
-  const [routeHistory, setRouteHistory] = useState<WorkspaceRoute[]>([]);
+  const [routeHistory, setRouteHistory] = useState<WorkspaceHistoryEntry[]>([]);
   const [locale, setLocale] = useState<UiLocale>("zh-CN");
   const [theme, setTheme] = useState<ThemeMode>("system");
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
@@ -192,9 +206,20 @@ export default function FishTongueDesktopApp({
   const [lexiconEntryTab, setLexiconEntryTab] = useState<
     "dictionary" | "profile" | "review"
   >("dictionary");
+  const [lexiconFocusRequest, setLexiconFocusRequest] = useState<{
+    languageId: string;
+    lexemeId: string;
+    requestId: string;
+  }>();
   const [aiProposalDraft, setAiProposalDraft] = useState<AiProposalDraft>();
+  const [contactAiDrafts, setContactAiDrafts] = useState<AiProposalDraft[]>([]);
+  const [contactWorkspaceDrafts, setContactWorkspaceDrafts] = useState<
+    Record<string, EtymologyWorkspaceDraft>
+  >({});
+  const [aiPromptRequest, setAiPromptRequest] = useState<{ id: string; prompt: string }>();
   const [projectDataRefreshRequest, setProjectDataRefreshRequest] = useState(0);
   const closingRef = useRef(false);
+  const mainWorkspaceRef = useRef<HTMLElement | null>(null);
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
     () => snapshot
@@ -204,22 +229,36 @@ export default function FishTongueDesktopApp({
   );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
+  const contactWorkspaceKey = snapshot
+    ? `${snapshot.project.id}:${selectedLanguage.id}`
+    : "";
+  const rememberContactWorkspace = useCallback(
+    (key: string, draft: EtymologyWorkspaceDraft) => {
+      if (!key) return;
+      setContactWorkspaceDrafts((current) => ({ ...current, [key]: draft }));
+    },
+    []
+  );
 
   useEffect(() => {
     if (!snapshot || !historyApplication ||
         !snapshot.languages.some((language) => language.id === selectedLanguage.id)) return;
     void historyApplication.listStages(selectedLanguage.id).then((stages) => {
-      const visible = stages.filter((stage) => stage.visible).map((stage) => ({
+      const toStageItem = (stage: (typeof stages)[number]) => ({
         id: stage.id,
         name: stage.name,
         years: [stage.startLabel, stage.endLabel].filter(Boolean).join("—") || "年代未设置",
         documentation: stage.documentationStatus,
-      }));
+      });
+      const allStageItems = stages.map(toStageItem);
+      const visible = stages.filter((stage) => stage.visible).map(toStageItem);
+      const defaultStage = stages.find((stage) => stage.kind === "internal_default");
       setSelectedLanguage((current) => current.id === selectedLanguage.id
         ? { ...current, stages: visible }
         : current);
       setSelectedStage((current) =>
-        visible.find((stage) => stage.id === current?.id) ?? visible[0]
+        allStageItems.find((stage) => stage.id === current?.id) ??
+        (defaultStage ? toStageItem(defaultStage) : visible[0])
       );
     }).catch((reason) => setMessage(`无法读取阶段：${errorMessage(reason)}`));
   }, [
@@ -295,6 +334,10 @@ export default function FishTongueDesktopApp({
   useEffect(() => {
     if (!aiOpen) setNavOverlayOpen(false);
   }, [aiOpen]);
+
+  useEffect(() => {
+    mainWorkspaceRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [route]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -384,12 +427,19 @@ export default function FishTongueDesktopApp({
 
   const navigate = (
     next: WorkspaceRoute,
-    lexiconTab: "dictionary" | "profile" | "review" = "dictionary"
+    lexiconTab: LexiconEntryTab = "dictionary",
+    originLexemeId?: string
   ) => {
     setNavOverlayOpen(false);
     if (next === "lexicon") setLexiconEntryTab(lexiconTab);
-    if (next === route) return;
-    setRouteHistory((history) => [...history.slice(-19), route]);
+    if (next === route && !originLexemeId) return;
+    setRouteHistory((history) => [...history.slice(-19), {
+      route,
+      languageId: selectedLanguage.id,
+      stageId: selectedStage?.id,
+      lexiconTab: lexiconEntryTab,
+      lexemeId: originLexemeId,
+    }]);
     setRoute(next);
     if (routesById[next].state === "planned") {
       setPlannedTitle(routesById[next].label);
@@ -402,7 +452,20 @@ export default function FishTongueDesktopApp({
     if (!previous) return;
     setNavOverlayOpen(false);
     setRouteHistory((history) => history.slice(0, -1));
-    setRoute(previous);
+    const language = workspaceLanguages.find((item) => item.id === previous.languageId);
+    if (language) {
+      setSelectedLanguage(language);
+      setSelectedStage(language.stages.find((stage) => stage.id === previous.stageId));
+    }
+    setLexiconEntryTab(previous.lexiconTab);
+    if (previous.lexemeId) {
+      setLexiconFocusRequest({
+        languageId: previous.languageId,
+        lexemeId: previous.lexemeId,
+        requestId: crypto.randomUUID(),
+      });
+    }
+    setRoute(previous.route);
   };
 
   const toggleNavigation = () => {
@@ -517,7 +580,12 @@ export default function FishTongueDesktopApp({
               onNavigate={navigate}
               onCollapse={toggleNavigation}
             />
-            <main id="main-workspace" className={styles.mainWorkspace} tabIndex={-1}>
+            <main
+              ref={mainWorkspaceRef}
+              id="main-workspace"
+              className={styles.mainWorkspace}
+              tabIndex={-1}
+            >
               <PreviewBanner locale={locale} live={Boolean(snapshot)} />
               <PageHeader
                 route={route}
@@ -552,7 +620,13 @@ export default function FishTongueDesktopApp({
                 wordGenerationService={wordGenerationService}
                 aiApplication={aiApplication}
                 historyApplication={historyApplication}
+                phase6Application={phase6Application}
                 aiProposalDraft={aiProposalDraft}
+                contactAiDrafts={contactAiDrafts}
+                contactWorkspaceKey={contactWorkspaceKey}
+                contactWorkspaceDraft={contactWorkspaceDrafts[contactWorkspaceKey]}
+                onContactWorkspaceDraft={rememberContactWorkspace}
+                onContactAiDraftsConsumed={() => setContactAiDrafts([])}
                 projectDataRefreshRequest={projectDataRefreshRequest}
                 onAiProposalConsumed={(requestId) => {
                   setAiProposalDraft((current) =>
@@ -561,16 +635,42 @@ export default function FishTongueDesktopApp({
                 }}
                 lexiconCreateRequest={lexiconCreateRequest}
                 lexiconEntryTab={lexiconEntryTab}
+                lexiconFocusRequest={lexiconFocusRequest}
+                onOpenRelatedLexeme={(languageId, lexemeId, originLexemeId) => {
+                  const language = workspaceLanguages.find(
+                    (item) => item.id === languageId
+                  );
+                  if (!language) {
+                    setMessage("未找到关联词条所属的语言。");
+                    return;
+                  }
+                  navigate("lexicon", "dictionary", originLexemeId);
+                  setSelectedLanguage(language);
+                  setSelectedStage(undefined);
+                  setLexiconFocusRequest({
+                    languageId,
+                    lexemeId,
+                    requestId: crypto.randomUUID(),
+                  });
+                }}
                 onOpenCandidateReview={() => navigate("lexicon", "review")}
-                onProjectChanged={(next) => setSnapshot({ ...next })}
+                onProjectChanged={(next) => {
+                  setSnapshot({ ...next });
+                  setProjectDataRefreshRequest((value) => value + 1);
+                }}
                 onStatus={setMessage}
                 onCreateLanguage={() => setDialog("new-language")}
+                onAskAi={(prompt) => {
+                  setAiOpen(true);
+                  setAiPromptRequest({ id: crypto.randomUUID(), prompt });
+                }}
               />
             </main>
             {aiOpen && (aiApplication
               ? <LiveAiSidebar
                   ai={aiApplication}
                   live={Boolean(snapshot)}
+                  promptRequest={aiPromptRequest}
                   context={{
                     route,
                     pageTitle,
@@ -582,12 +682,19 @@ export default function FishTongueDesktopApp({
                   onClose={() => setAiOpen(false)}
                   onSettings={() => navigate("ai-settings")}
                   onDeliver={(draft) => {
+                    if (route === "contact" && ["lexeme.upsert", "borrowing_adaptation.suggest"].includes(draft.kind)) {
+                      setContactAiDrafts([draft]);
+                      return;
+                    }
                     setAiProposalDraft(draft);
                     if (draft.kind === "lexeme.upsert") navigate("lexicon", "dictionary");
                     else if (draft.kind === "wordgen_profile.upsert") navigate("lexicon", "profile");
                     else if (draft.kind === "evolution.update_draft") navigate("evolution");
                     else navigate("morphology");
                   }}
+                  onDeliverMany={route === "contact" ? (drafts) => {
+                    setContactAiDrafts(drafts.filter((draft) => ["lexeme.upsert", "borrowing_adaptation.suggest"].includes(draft.kind)));
+                  } : undefined}
                   onProjectDataChanged={() => {
                     const current = application.getSnapshot();
                     if (current) setSnapshot({ ...current });
@@ -921,9 +1028,10 @@ function PreviewBanner({ locale, live }: { locale: UiLocale; live: boolean }) {
 function PageHeader({ route, locale, live, onCreate }: { route: WorkspaceRoute; locale: UiLocale; live: boolean; onCreate: () => void }) {
   const item = routesById[route];
   const featureState = live && ["project-home", "languages", "lexicon", "evolution", "morphology"].includes(route) ? "live" : item.state;
+  const usesGenericActions = ["project-home", "languages", "lexicon", "morphology"].includes(route);
   return <header className={styles.pageHeader}>
     <div><div className={styles.pageTitleLine}><h1>{locale === "zh-CN" ? item.label : item.englishLabel}</h1><FeatureBadge state={featureState} locale={locale} /></div><p>{locale === "zh-CN" ? pageDescriptions[route] : pageDescriptionsEn[route]}</p></div>
-    <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>
+    {usesGenericActions && <div className={styles.pageActions}><button><MagnifyingGlassIcon aria-hidden="true" />{t(locale, "search")}</button><button><MixerHorizontalIcon aria-hidden="true" />{t(locale, "filter")}</button><button className={styles.primaryButton} onClick={onCreate}><PlusIcon aria-hidden="true" />{t(locale, "create")}</button></div>}
   </header>;
 }
 
@@ -937,7 +1045,7 @@ function FeatureBadge({ state, locale = "zh-CN" }: { state: UiFeatureState; loca
 const pageDescriptions: Record<WorkspaceRoute, string> = {
   "project-home": "从一个稳定入口了解项目、语言和待处理问题。",
   languages: "浏览项目中的全部语言、阶段状态和资料完整度。",
-  genealogy: "查看语言继承、分支和方言关系；拖动不会直接修改关系。",
+  genealogy: "查看项目中的语言继承与分支。",
   events: "按时间整理迁徙、接触、标准化和语言变化事件。",
   "project-settings": "管理项目基本信息、启动行为和界面偏好。",
   "language-overview": "当前语言与阶段的工作摘要和快捷入口。",
@@ -997,16 +1105,39 @@ function PageContent(props: {
   wordGenerationService?: WordGenerationService;
   aiApplication?: AiApplication;
   historyApplication?: Phase5Application;
+  phase6Application?: Phase6Application;
   aiProposalDraft?: AiProposalDraft;
+  contactAiDrafts: AiProposalDraft[];
+  contactWorkspaceKey: string;
+  contactWorkspaceDraft?: EtymologyWorkspaceDraft;
+  onContactWorkspaceDraft: (key: string, draft: EtymologyWorkspaceDraft) => void;
+  onContactAiDraftsConsumed: () => void;
   projectDataRefreshRequest: number;
   onAiProposalConsumed: (requestId: string) => void;
   lexiconCreateRequest: number;
   lexiconEntryTab: "dictionary" | "profile" | "review";
+  lexiconFocusRequest?: {
+    languageId: string;
+    lexemeId: string;
+    requestId: string;
+  };
+  onOpenRelatedLexeme: (
+    languageId: string,
+    lexemeId: string,
+    originLexemeId: string
+  ) => void;
   onOpenCandidateReview: () => void;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
   onCreateLanguage: () => void;
+  onAskAi: (prompt: string) => void;
 }) {
+  const { contactWorkspaceKey, onContactWorkspaceDraft } = props;
+  const rememberContactDraft = useCallback(
+    (draft: EtymologyWorkspaceDraft) =>
+      onContactWorkspaceDraft(contactWorkspaceKey, draft),
+    [contactWorkspaceKey, onContactWorkspaceDraft]
+  );
   const liveLanguage = Boolean(
     props.snapshot?.languages.some((language) => language.id === props.language.id)
   );
@@ -1019,18 +1150,43 @@ function PageContent(props: {
     case "genealogy": return props.snapshot && props.historyApplication
       ? <GenealogyWorkspace application={props.historyApplication}
           languages={props.snapshot.languages}
-          onChanged={() => props.onStatus("语言关系已更新。")}
+          onOpenLanguage={(languageId) => {
+            const language = projectLanguages.find((item) => item.id === languageId);
+            if (language) props.onLanguage(language);
+          }}
+          onChanged={() => {
+            const current = props.application.getSnapshot();
+            if (current) props.onProjectChanged(current);
+          }}
           onStatus={props.onStatus} />
       : <GenealogyPage onLanguage={props.onLanguage} />;
     case "events": return props.snapshot && props.historyApplication
       ? <EventsWorkspace application={props.historyApplication}
           languages={props.snapshot.languages}
-          onChanged={() => props.onStatus("历史事件已更新。")}
+          onChanged={() => {
+            const current = props.application.getSnapshot();
+            if (current) props.onProjectChanged(current);
+          }}
           onStatus={props.onStatus} />
       : <EventsPage />;
     case "project-settings": return props.snapshot ? <LiveProjectPlaceholder title="项目设置尚未接入真实项目" /> : <SettingsPage />;
     case "language-overview": return <LanguageOverview language={props.language} />;
-    case "language-properties": return <PropertiesPage language={props.language} />;
+    case "language-properties": {
+      const language = props.snapshot?.languages.find((item) => item.id === props.language.id);
+      return language && props.historyApplication
+        ? <LanguagePropertiesWorkspace
+            application={props.historyApplication}
+            project={props.application}
+            language={language}
+            languages={props.snapshot!.languages}
+            onChanged={() => {
+              const current = props.application.getSnapshot();
+              if (current) props.onProjectChanged(current);
+            }}
+            onStatus={props.onStatus}
+          />
+        : <PropertiesPage language={props.language} />;
+    }
     case "stages": return props.snapshot && props.historyApplication
       ? <StagesWorkspace application={props.historyApplication}
           languages={props.snapshot.languages}
@@ -1042,25 +1198,36 @@ function PageContent(props: {
             years: [stage.startLabel, stage.endLabel].filter(Boolean).join("—") || "年代未设置",
             documentation: stage.documentationStatus,
           } : undefined)}
-          onChanged={() => props.onStatus("阶段数据已更新。")}
+          onChanged={() => {
+            const current = props.application.getSnapshot();
+            if (current) props.onProjectChanged(current);
+          }}
           onStatus={props.onStatus} />
       : <StagesPage language={props.language} selected={props.selectedStage} onStage={props.onStage} />;
     case "dialects": return props.snapshot && props.historyApplication
       ? <DialectsWorkspace application={props.historyApplication}
           languages={props.snapshot.languages}
           languageId={props.language.id}
-          onChanged={() => props.onStatus("方言数据已更新。")}
+          onChanged={() => {
+            const current = props.application.getSnapshot();
+            if (current) props.onProjectChanged(current);
+          }}
           onStatus={props.onStatus} />
       : <DialectsPage />;
-    case "phonology": return <PhonologyPage />;
+    case "phonology": return props.snapshot && props.phase6Application
+      ? <PhonologyWorkspace application={props.phase6Application} languageId={props.language.id}
+          stageId={props.selectedStage?.id} onStatus={props.onStatus} />
+      : <PhonologyPage />;
     case "morphology": return props.snapshot
       ? <MorphemeWorkspace application={props.application} inflectionService={props.inflectionService} languageId={props.language.id} live={liveLanguage} onProjectChanged={props.onProjectChanged} onStatus={props.onStatus} onOpenCandidateReview={props.onOpenCandidateReview} aiDraft={props.aiProposalDraft} onAiDraftConsumed={props.onAiProposalConsumed} refreshRequest={props.projectDataRefreshRequest} />
       : <MorphologyPage />;
     case "lexicon": return props.snapshot
       ? <WordGenerationWorkspace
           application={props.application}
+          phonologyApplication={props.phase6Application}
           service={props.wordGenerationService}
           languageId={props.language.id}
+          stageId={props.selectedStage?.id}
           onProjectChanged={props.onProjectChanged}
           onStatus={props.onStatus}
           initialTab={props.lexiconEntryTab}
@@ -1075,6 +1242,15 @@ function PageContent(props: {
             aiDraft={props.aiProposalDraft}
             onAiDraftConsumed={props.onAiProposalConsumed}
             refreshRequest={props.projectDataRefreshRequest}
+            historyApplication={props.historyApplication}
+            languages={props.snapshot.languages}
+            stageId={props.selectedStage?.id}
+            focusRequest={
+              props.lexiconFocusRequest?.languageId === props.language.id
+                ? props.lexiconFocusRequest
+                : undefined
+            }
+            onOpenRelatedLexeme={props.onOpenRelatedLexeme}
           />}
         />
       : <PrototypeLexiconPage />;
@@ -1084,11 +1260,24 @@ function PageContent(props: {
       live={liveLanguage} aiDraft={props.aiProposalDraft}
       onAiDraftConsumed={props.onAiProposalConsumed}
       historyApplication={props.historyApplication}
-      selectedStageId={props.selectedStage?.id} />;
+      selectedStageId={props.selectedStage?.id}
+      onStageDataChanged={() => {
+        const current = props.application.getSnapshot();
+        if (current) props.onProjectChanged(current);
+      }} />;
     case "contact": return props.snapshot && props.historyApplication
       ? <EtymologyWorkspace application={props.historyApplication}
-          project={props.application} languages={props.snapshot.languages}
-          onChanged={() => props.onStatus("词源关系已更新。")}
+          project={props.application} phase6={props.phase6Application} languages={props.snapshot.languages}
+          languageId={props.language.id}
+          onAskAi={props.onAskAi}
+          aiDrafts={props.contactAiDrafts}
+          draft={props.contactWorkspaceDraft}
+          onDraftChange={rememberContactDraft}
+          onAiDraftsConsumed={props.onContactAiDraftsConsumed}
+          onChanged={() => {
+            const current = props.application.getSnapshot();
+            if (current) props.onProjectChanged(current);
+          }}
           onStatus={props.onStatus} />
       : <ContactPage />;
     case "translation": return <TranslationPage />;

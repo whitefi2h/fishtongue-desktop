@@ -37,6 +37,15 @@ import {
   SqliteLanguageStageRepository,
   SqliteStageEvolutionRepository,
 } from "@/fishtongue/infrastructure/Phase5Repositories";
+import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
+import Phase6ApplicationService from "@/fishtongue/application/services/Phase6ApplicationService";
+import {
+  SqliteBorrowingBatchRepository,
+  SqliteBorrowingProfileRepository,
+  SqlitePhonologyRepository,
+} from "@/fishtongue/infrastructure/Phase6Repositories";
+import TauriPhonologyAnalysisAdapter from "@/fishtongue/infrastructure/TauriPhonologyAnalysisAdapter";
+import BorrowingAdaptationService from "@/fishtongue/application/services/BorrowingAdaptationService";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -77,10 +86,21 @@ export function createDesktopApplications(): {
   project: ProjectSessionService;
   ai: AiApplication;
   history: Phase5Application;
+  phase6: Phase6Application;
 } {
   const database = new TauriDatabaseSession();
   const project = createProjectApplication(database);
   const stageRepository = new SqliteLanguageStageRepository(database);
+  const phonologyRepository = new SqlitePhonologyRepository(database);
+  const stageResolver = new StageStateResolver(
+    stageRepository,
+    new SqliteLexemeRepository(database),
+    new SqliteMorphemeRepository(database),
+    new SqliteEvolutionRepository(database),
+    new SqliteInflectionRepository(database),
+    new SqliteWordGenerationProfileRepository(database),
+    phonologyRepository
+  );
   const history = new HistoryApplicationService(
     project,
     stageRepository,
@@ -88,14 +108,7 @@ export function createDesktopApplications(): {
     new SqliteHistoricalEventRepository(database),
     new SqliteEtymologyRepository(database),
     new SqliteStageEvolutionRepository(database),
-    new StageStateResolver(
-      stageRepository,
-      new SqliteLexemeRepository(database),
-      new SqliteMorphemeRepository(database),
-      new SqliteEvolutionRepository(database),
-      new SqliteInflectionRepository(database),
-      new SqliteWordGenerationProfileRepository(database)
-    )
+    stageResolver
   );
   const repository = new SqliteAiConversationRepository(database);
   const wordGeneration = createDesktopWordGenerationService();
@@ -113,7 +126,23 @@ export function createDesktopApplications(): {
     project,
     proposals
   );
-  return { project, ai, history };
+  const analysis = new TauriPhonologyAnalysisAdapter();
+  const borrowingBatches = new SqliteBorrowingBatchRepository(database);
+  const phase6 = new Phase6ApplicationService(
+    phonologyRepository,
+    new SqliteBorrowingProfileRepository(database),
+    borrowingBatches,
+    stageRepository,
+    () => project.markProjectChanged(),
+    analysis,
+    new BorrowingAdaptationService(
+      analysis,
+      borrowingBatches,
+      createDesktopSoundChangeService()
+    ),
+    stageResolver
+  );
+  return { project, ai, history, phase6 };
 }
 
 export function createDesktopWindowPort(): TauriDesktopWindowAdapter {

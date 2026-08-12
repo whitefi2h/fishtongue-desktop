@@ -1,6 +1,6 @@
 # FishTongue Desktop
 
-## Phase 5 实施状态（2026-07-30）
+## Phase 6 开发状态（2026-08-09）
 
 Phase 3 已通过干净 Windows 外部人工验收并正式结项。Phase 4 的 AI 数据模型位于
 Schema v6，人工验收修复迁移 v7 将单次回答的提案上限安全扩展到 50；它在既有扩展词条、独立词义、语素、造词配置、自定义概念表和候选审核批次
@@ -24,12 +24,15 @@ Phase 4 已通过外部 Windows 人工验收并正式结项。已实现多模型
 会话先前提案，避免把“另一个提案”重复生成为相同内容。
 AI 是可选能力；未配置模型或断网时，项目、词典、造词、演化和屈折仍须正常工作。
 
-Phase 5 的代码实现与本机自动总验收已经完成。Schema v8 为每门既有及新建语言创建隐藏的内部默认状态，
+Phase 5 已通过外部 Windows 人工验收并正式结项。Schema v8 为每门既有及新建语言创建隐藏的内部默认状态，
 并交付历史阶段、轻量方言、语言关系、历史事件、词源和正向演化审核。阶段的时间顺序与数据继承分开；
 无记录阶段只能保存背景和关系，不能生成或保存虚构语言数据。人工验收修复迁移 v9 将阶段主体与
-背景、证据和来源合并为一次原子保存，并自动避开阶段顺序冲突。当前开发与验收基线见
-[`docs/phase-5-development-plan.md`](docs/phase-5-development-plan.md)；在
-外部 Windows 人工验收完成前，Phase 5 仍不视为结项，也不创建结项标签。
+背景、证据和来源合并为一次原子保存，并自动避开阶段顺序冲突；迁移 v10 修复已经记录 v9
+但未获得该写入对象的既有项目，并改为每次打开项目时显式执行迁移。
+
+Phase 6 正在建立正式音系与独立 PanPhon Analysis Sidecar，并把确定性、可选 LLM 和可选 Lexurgy 借词适配整合进“词源与接触”。Morfessor、自动语素切分、音韵对应和逆向重构不属于本阶段。详细实施与验收基线见
+[`docs/phase-6-development-plan.md`](docs/phase-6-development-plan.md)。这些分析能力只产生候选或证据，不会自动重建祖语、修改谱系或绕过审核写入正式数据。
+当前 Schema v14 在 v13 正式音系与借词批次基础上补充 AI 借词建议提案兼容；借词工作区会在当前应用会话内记住未提交进度，IPA 分析兼容拉丁小写 `g` 和 IPA 小写 `ɡ`，同时保留用户原始输入。
 
 人工验收提出的 IPA 音位选点、演化词典筛选、候选冲突处理和面向语言学新手的
 离线 `⍰` 帮助要求，统一记录在
@@ -37,11 +40,11 @@ Phase 5 的代码实现与本机自动总验收已经完成。Schema v8 为每�
 
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2 和 Phase 3 已通过验收。Phase 2 已交付
+> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2、Phase 3、Phase 4 和 Phase 5 均已通过验收。Phase 2 已交付
 > Lexurgy Sidecar、音变预览、屈折预览和 Schema v2，并通过无系统 Java 的外部
 > Windows 验收。Phase 3 已交付正式词典、语素、确定性造词、候选审核、批量提交
-> 和安全撤销。Phase 4 已交付可选的多模型 AI 助手与安全提案系统。Phase 5 已完成
-> 真实历史阶段、谱系、方言、事件、词源和跨阶段演化审核的代码交付，等待外部人工验收。
+> 和安全撤销。Phase 4 已交付可选的多模型 AI 助手与安全提案系统。Phase 5 已交付
+> 真实历史阶段、谱系、方言、事件、词源、语言接触和跨阶段演化审核。Phase 6 当前处于开发完成、本机自动验收阶段；外部 Windows 验收前不标记结项。
 > 其他设计原型入口不代表相应能力已经实现。
 
 ## 最终用户体验
@@ -109,7 +112,7 @@ FishTongue Desktop
 ├── Lexurgy Sidecar
 │   └── 音变、规则验证和词形生成
 ├── Analysis Sidecar
-│   └── PanPhon、Morfessor 和借词分析
+│   └── PanPhon 和借词分析
 └── LLM Provider
     └── 用户配置的在线或本地模型
 ```
@@ -132,7 +135,6 @@ FishTongue 不重写成熟的语言学核心：
 - **Lexurgy App 前端**：React 页面、CodeMirror 编辑器、Lezer 高亮、Radix UI、Jest 和 Cypress 测试；
 - **PolyGlot**：选择性移植造词和候选审核逻辑，不移植 Swing、NetBeans 与 XML 存储；
 - **PanPhon**：音位特征、音位距离和借词映射；
-- **Morfessor**：候选语素切分；
 - **Concepticon、PHOIBLE、CLTS、Glottolog**：版本化的概念和现实语言参考数据。
 
 ## 前端与本地能力的边界
@@ -158,10 +160,11 @@ React UI → Service → Repository → Tauri SQL Plugin → SQLite
 
 React 页面不得直接执行 SQL。数据访问层负责业务查询、事务、迁移和错误处理。
 
-当前 Schema v9 在既有项目、语言、词条、独立 Sense、Evolution、屈折、语素、造词配置、
+当前 Schema v12 在既有项目、语言及其完整基本属性、词条、独立 Sense、Evolution、屈折、语素、造词配置、
 概念表、候选审核和 AI 记录之上，新增内部默认状态、历史阶段、轻量方言、语言关系、
-历史事件、词源关系及正向演化审核记录，并修复新建阶段的原子保存。发布过的 v1～v8
-迁移保持不变。
+历史事件、词源关系及正向演化审核记录，并修复新建阶段的原子保存和既有项目漏迁移。
+发布过的 v1～v10 迁移保持不变；迁移由 Rust 在每次项目数据库打开前执行。词源关系可引用
+一个历史事件；删除事件时只解除链接，不删除词源关系。
 
 原 Neo4j 图关系改为外键或关系表。例如：
 
@@ -191,7 +194,7 @@ FishTongue 启动（此时不启动 Java）
 
 ## Analysis Sidecar
 
-PanPhon 和 Morfessor 继续使用 Python，并在发布时打包成独立可执行文件。分析进程按需启动：
+PanPhon 使用 Python，并在发布时打包成独立可执行文件。分析进程按需启动：
 
 ```text
 用户发起分析
@@ -200,7 +203,7 @@ PanPhon 和 Morfessor 继续使用 Python，并在发布时打包成独立可执
 → 任务结束后关闭进程
 ```
 
-分析结果只提供候选与证据，不自动成为正式词素或规则。逆向分析和高级借词可推迟到 Phase 6，避免阻塞桌面基础功能。
+分析结果只提供候选与证据，不自动成为正式词素或规则。Phase 6 只交付正式借词适配；逆向分析推迟到后续阶段。
 
 ## 本地项目文件
 
@@ -248,7 +251,7 @@ Evolution 草稿、自动保存、备份与崩溃恢复。Phase 1.5 在这些能
 ```text
 fishtongue-desktop   # Tauri、React、SQLite、项目文件、LLM、审核和安装
 fishtongue-engine    # Lexurgy、规则验证、词形、造词和音系验证
-fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
+fishtongue-analysis  # PanPhon IPA 特征和借词映射分析
 ```
 
 参考数据可作为固定版本的构建资源纳入桌面仓库，也可放在独立数据目录。无论放在哪里，都必须保留来源、版本、许可证和署名信息。
@@ -264,7 +267,7 @@ fishtongue-analysis  # PanPhon、Morfessor、借词和逆向分析
 | Phase 3 | 词典与造词           | 支持多词义、语素、确定性造词、审核、批量提交和撤销          |
 | Phase 4 | LLM                  | 密钥加密；结构化提案；模型不能直写正式数据；无 LLM 模式可用 |
 | Phase 5 | 完整历史与语言树     | 完善谱系、历史事件、词源、借词和跨阶段演化链                |
-| Phase 6 | Analysis Sidecar     | PanPhon、Morfessor、借词适配和逆向分析独立打包              |
+| Phase 6 | 正式音系与借词适配   | PanPhon、确定性规则、可选 LLM 与 Lexurgy 协同              |
 | Phase 7 | 正式发布             | 安装、更新、备份、恢复、完整测试及跨平台构建                |
 
 ## 当前进度
@@ -335,7 +338,7 @@ Tauri SQL Plugin → SQLite` 数据链路；不得恢复 Neo4j 主数据源，
 
 ## 许可证
 
-Lexurgy 与 Lexurgy App 的 GPL-3.0 许可和原作者版权声明必须保留。移植 PolyGlot、使用 PanPhon、Morfessor 或打包开放数据时，必须保留对应许可证与署名。发布前应逐项复核 Sidecar、最小 JRE、Python 打包产物和数据集的再分发条件。
+Lexurgy 与 Lexurgy App 的 GPL-3.0 许可和原作者版权声明必须保留。移植 PolyGlot、使用 PanPhon 或打包开放数据时，必须保留对应许可证与署名。发布前应逐项复核 Sidecar、最小 JRE、Python 打包产物和数据集的再分发条件。
 
 ## 文档依据
 

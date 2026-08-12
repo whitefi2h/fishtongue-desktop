@@ -11,8 +11,29 @@ export interface Language {
   id: string;
   projectId: string;
   name: string;
+  profile?: LanguageProfile;
   createdAt: UtcTimestamp;
   updatedAt: UtcTimestamp;
+}
+
+export interface LanguageProfile {
+  nativeName: string;
+  code: string;
+  aliases: string;
+  description: string;
+  tags: string;
+  status: string;
+  speakers: string;
+  population: string;
+  region: string;
+  startLabel: string;
+  endLabel: string;
+  socialStatus: string;
+  officialStatus: string;
+  currentWritingSystem: string;
+  historicalWritingSystems: string;
+  orthographies: string;
+  notes: string;
 }
 
 export type LanguageStageKind =
@@ -59,6 +80,7 @@ export type StageComponentType =
   | "morphemes"
   | "evolution"
   | "inflection"
+  | "phonology"
   | "wordgen";
 export type StageOverrideOperation = "replace" | "merge" | "remove";
 
@@ -141,6 +163,7 @@ export interface EtymologyRelation {
   targetLexemeId: string;
   sourceStageId?: string;
   targetStageId?: string;
+  historicalEventId?: string;
   kind: EtymologyRelationKind;
   sourceForm: string;
   confidence: EvidenceConfidence;
@@ -157,9 +180,120 @@ export interface ResolvedStageState {
     morphemes: Record<string, Record<string, unknown>>;
     evolution?: Record<string, unknown>;
     inflection?: Record<string, unknown>;
+    phonology?: Record<string, unknown>;
     wordgen: Record<string, Record<string, unknown>>;
   };
   warnings: string[];
+}
+
+export type PhonemeClass = "consonant" | "vowel" | "suprasegmental" | "other";
+export type PhonemeRole = "phoneme" | "allophone";
+
+export interface Phoneme {
+  id: string;
+  profileId: string;
+  ipa: string;
+  displaySymbol: string;
+  category: PhonemeClass;
+  role: PhonemeRole;
+  parentPhonemeId?: string;
+  distribution: string;
+  source: string;
+  notes: string;
+  position: number;
+}
+
+export interface PhonologyProfile {
+  id: string;
+  languageId: string;
+  structureVersion: "phonology-profile-v1";
+  syllableTemplates: string[];
+  legalOnsets: string[];
+  legalNuclei: string[];
+  legalCodas: string[];
+  legalClusters: string[];
+  forbiddenPatterns: string[];
+  stressRules: Record<string, unknown>;
+  toneRules: Record<string, unknown>;
+  phonemes: Phoneme[];
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface BorrowingProfileConfig {
+  explicitMappings: Array<{ source: string; targets: string[]; priority: number }>;
+  distanceWeights: Record<string, number>;
+  epenthesis: Array<{ phoneme: string; positions: string[] }>;
+  deletionRules: string[];
+  replacementRules: Array<{ pattern: string; replacement: string }>;
+  repairOrder: Array<"replace" | "insert" | "delete" | "resyllabify">;
+  stressStrategy: "preserve" | "target_default" | "none";
+  toneStrategy: "preserve" | "target_default" | "none";
+  morphology?: { morphemeIds: string[]; partOfSpeech?: string };
+  candidateCount: number;
+  maxSearchAttempts: number;
+}
+
+export interface BorrowingProfile {
+  id: string;
+  projectId: string;
+  sourceLanguageId?: string;
+  sourceStageId?: string;
+  targetLanguageId: string;
+  targetStageId?: string;
+  name: string;
+  structureVersion: "borrowing-profile-v1";
+  isDefault: boolean;
+  config: BorrowingProfileConfig;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export type BorrowingBatchStatus = "draft" | "committed" | "discarded";
+export type BorrowingCandidateStatus = "pending" | "accepted" | "rejected" | "committed";
+
+export interface BorrowingCandidate {
+  id: string;
+  batchId: string;
+  sourceLexemeId?: string;
+  sourceForm: string;
+  sourceIpa: string;
+  adaptedForm: string;
+  adaptedIpa: string;
+  evolvedForm?: string;
+  partOfSpeech: string;
+  senses: Array<{ definition: string; position: number }>;
+  morphemeIds: string[];
+  trace: Array<Record<string, unknown>>;
+  distance?: number;
+  warnings: string[];
+  explanation: string;
+  status: BorrowingCandidateStatus;
+  committedLexemeId?: string;
+  committedRelationId?: string;
+  position: number;
+}
+
+export interface BorrowingBatch {
+  id: string;
+  profileId: string;
+  sourceLanguageId?: string;
+  sourceStageId?: string;
+  targetLanguageId: string;
+  targetStageId?: string;
+  sourceSnapshot: Record<string, unknown>[];
+  phonologySnapshot: Record<string, unknown>;
+  profileSnapshot: BorrowingProfileConfig;
+  snapshotHash: string;
+  panphonVersion: string;
+  algorithmVersion: "borrowing-adaptation-v1";
+  historicalEventId?: string;
+  lexurgyStageChain: string[];
+  llmModelLabel?: string;
+  status: BorrowingBatchStatus;
+  candidates: BorrowingCandidate[];
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
 }
 
 export type StageEvolutionCandidateStatus =
@@ -442,7 +576,8 @@ export type AiProposalKind =
   | "morpheme.upsert"
   | "wordgen_profile.upsert"
   | "evolution.update_draft"
-  | "inflection_system.update_draft";
+  | "inflection_system.update_draft"
+  | "borrowing_adaptation.suggest";
 export type AiProposalStatus =
   | "pending"
   | "staged"

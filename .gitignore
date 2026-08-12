@@ -41,3 +41,11 @@ cypress/videos
 # Generated Phase 2 engine runtime (recreated from locked, verified inputs)
 /.engine-cache/
 /src-tauri/resources/lexurgy/
+
+# Generated Phase 6 Analysis runtime and build worktrees
+/fishtongue-analysis/.venv-build/
+/fishtongue-analysis/build/
+/fishtongue-analysis/dist/
+/fishtongue-analysis/release-metadata/
+/fishtongue-analysis/__pycache__/
+/src-tauri/resources/fishtongue-analysis/

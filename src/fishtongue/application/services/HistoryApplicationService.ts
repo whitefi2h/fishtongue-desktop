@@ -123,6 +123,12 @@ export default class HistoryApplicationService implements Phase5Application {
         createsGeneticCycle(value, all.filter((item) => item.id !== value.id))) {
       throw new Error("该继承关系会形成循环，无法保存。");
     }
+    if (value.kind === "genetic" && value.isPrimary && all.some((item) =>
+      item.id !== value.id && item.kind === "genetic" && item.isPrimary &&
+      item.targetLanguageId === value.targetLanguageId
+    )) {
+      throw new Error("目标语言已经有一个主要继承来源。请先删除或调整原关系。");
+    }
     await this.relations.save({
       ...value,
       projectId: snapshot.project.id,
@@ -172,6 +178,28 @@ export default class HistoryApplicationService implements Phase5Application {
 
   async saveEtymologyRelation(value: EtymologyRelation): Promise<void> {
     const snapshot = this.requireProject();
+    if (value.sourceLexemeId && value.sourceLexemeId === value.targetLexemeId) {
+      throw new Error("来源词条和目标词条不能相同。");
+    }
+    if (!value.sourceLexemeId && !value.sourceForm.trim()) {
+      throw new Error("请选择来源词条，或填写项目外来源形式。");
+    }
+    if (value.kind === "borrowing" && value.sourceLexemeId) {
+      const lexemes = (await Promise.all(
+        snapshot.languages.map((language) => this.project.listLexemes(language.id))
+      )).flat();
+      const source = lexemes.find((lexeme) => lexeme.id === value.sourceLexemeId);
+      const target = lexemes.find((lexeme) => lexeme.id === value.targetLexemeId);
+      if (source && target && source.languageId === target.languageId) {
+        throw new Error("语言不能从自身借入词汇，请选择另一门来源语言。");
+      }
+    }
+    if (value.historicalEventId) {
+      const events = await this.events.list(snapshot.project.id);
+      if (!events.some((event) => event.id === value.historicalEventId)) {
+        throw new Error("关联的历史事件不存在或已被删除。");
+      }
+    }
     await this.etymology.save({
       ...value,
       projectId: snapshot.project.id,
@@ -295,6 +323,16 @@ function assertStageLinks(value: LanguageStage, stages: LanguageStage[]): void {
       value.storageMode !== "no_data") {
     throw new Error("无记录阶段只能保存背景与关系，不能包含语言数据。");
   }
+  if (value.storageMode === "no_data" && value.dataBaseStageId) {
+    throw new Error("无数据阶段不能设置数据基础。它只保存历史背景与关系。");
+  }
+  if (value.dataBaseStageId) {
+    const dataBase = byId.get(value.dataBaseStageId);
+    if (dataBase?.storageMode === "no_data" ||
+        dataBase?.documentationStatus === "unrecorded") {
+      throw new Error("无记录阶段不能作为数据基础。请选择包含语言数据的阶段。");
+    }
+  }
   const parents = new Map(stages.map((stage) => [stage.id, stage.dataBaseStageId]));
   parents.set(value.id, value.dataBaseStageId);
   let cursor = value.dataBaseStageId;
@@ -312,6 +350,9 @@ function normalizeStage(value: LanguageStage): LanguageStage {
     name: requiredText(value.name, "阶段名称"),
     startLabel: value.startLabel.trim(),
     endLabel: value.endLabel.trim(),
+    dataBaseStageId: value.storageMode === "no_data"
+      ? undefined
+      : value.dataBaseStageId,
     visible: value.kind !== "internal_default",
     updatedAt: new Date().toISOString(),
   };

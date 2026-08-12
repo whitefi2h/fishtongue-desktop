@@ -164,14 +164,16 @@ export function AiSettingsPage({ ai, onStatus }: {
   </div>;
 }
 
-export function AiSidebar({ ai, context, live, onClose, onSettings, onStatus, onDeliver, onProjectDataChanged = () => {} }: {
+export function AiSidebar({ ai, context, live, promptRequest, onClose, onSettings, onStatus, onDeliver, onDeliverMany, onProjectDataChanged = () => {} }: {
   ai: AiApplication;
   context: AiUiContext;
   live: boolean;
+  promptRequest?: { id: string; prompt: string };
   onClose: () => void;
   onSettings: () => void;
   onStatus: (message: string) => void;
   onDeliver: (draft: AiProposalDraft) => void;
+  onDeliverMany?: (drafts: AiProposalDraft[]) => void;
   onProjectDataChanged?: () => void;
 }) {
   const [configs, setConfigs] = useState<AiProviderConfig[]>([]);
@@ -187,6 +189,11 @@ export function AiSidebar({ ai, context, live, onClose, onSettings, onStatus, on
   const [pendingUserMessage, setPendingUserMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [bulkMessageId, setBulkMessageId] = useState<string>();
+  useEffect(() => {
+    if (!promptRequest) return;
+    setPrompt(promptRequest.prompt);
+    setScope("language");
+  }, [promptRequest]);
   const activeConfig = useMemo(
     () => configs.find((item) => item.id === providerId && item.enabled)
       ?? configs.find((item) => item.isDefault && item.enabled)
@@ -345,7 +352,24 @@ export function AiSidebar({ ai, context, live, onClose, onSettings, onStatus, on
           {message.role === "assistant" && audit && <details className={styles.aiReferences}><summary>本次引用 {audit.references.length} 项</summary>
             {audit.references.map((reference) => <span key={`${reference.type}-${reference.id}`}><strong>{reference.label}</strong><small>{reference.detail}</small></span>)}</details>}
           {message.role === "assistant" && multiEditable
-            ? <button className={styles.aiBatchReviewButton} onClick={() => setBulkMessageId(message.id)}>审核这次生成的 {messageProposals.length} 项提案</button>
+            ? <button className={styles.aiBatchReviewButton} onClick={() => {
+                if (!onDeliverMany) {
+                  setBulkMessageId(message.id);
+                  return;
+                }
+                void Promise.all(messageProposals.map((proposal) =>
+                  ai.stageProposal(proposal.id, proposal.patch)
+                )).then(() => {
+                  onDeliverMany(messageProposals.map((proposal) => ({
+                    requestId: crypto.randomUUID(),
+                    proposalId: proposal.id,
+                    messageId: proposal.messageId,
+                    kind: proposal.kind,
+                    patch: proposal.patch,
+                  })));
+                  onStatus(`已将 ${messageProposals.length} 项提案填入语言接触批量表，尚未保存。`);
+                }).catch((error) => onStatus(error instanceof Error ? error.message : String(error)));
+              }}>{onDeliverMany ? `填入语言接触批量表（${messageProposals.length}）` : `审核这次生成的 ${messageProposals.length} 项提案`}</button>
             : proposals.map((proposal) => <ProposalCard
                 key={proposal.id}
                 proposal={proposal}
@@ -414,6 +438,17 @@ function ProposalCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => JSON.stringify(proposal.patch, null, 2));
   const reviewable = ["pending", "staged"].includes(proposal.status);
+  const isBorrowingSuggestion = proposal.kind === "borrowing_adaptation.suggest";
+  const deliverLabel = directCommit
+    ? "确认并保存"
+    : isBorrowingSuggestion
+      ? "应用到候选表"
+      : "填入编辑器";
+  const deliverSuccess = directCommit
+    ? "提案已确认并保存到项目。"
+    : isBorrowingSuggestion
+      ? "AI 建议已应用到当前候选表，尚未写入词典。"
+      : "提案已填入对应编辑器，尚未保存。";
   const run = async (action: () => Promise<void>, success?: string) => {
     try {
       await action();
@@ -443,8 +478,8 @@ function ProposalCard({
         : <button disabled={!reviewable} onClick={() => setEditing(true)}>编辑</button>}
       <button className={styles.primaryButton} disabled={!reviewable} onClick={() => void run(
         directCommit ? onApply : onDeliver,
-        directCommit ? "提案已确认并保存到项目。" : "提案已填入对应编辑器，尚未保存。"
-      )}>{directCommit ? "确认并保存" : "填入编辑器"}</button>
+        deliverSuccess
+      )}>{deliverLabel}</button>
     </div>
   </article>;
 }

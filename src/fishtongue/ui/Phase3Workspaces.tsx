@@ -1,8 +1,10 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
 import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
 import { normalizeWordGenerationConfig } from "@/fishtongue/application/services/AiProposalService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
+import { syncWordGenerationConfigFromPhonology } from "@/fishtongue/application/services/PhonologyWordGenerationSync";
 import { builtInConcepts } from "@/fishtongue/data/BuiltInConceptLists";
 import {
   CandidateStatus,
@@ -326,8 +328,10 @@ function DerivationPanel({
 
 export function WordGenerationWorkspace({
   application,
+  phonologyApplication,
   service,
   languageId,
+  stageId,
   dictionary,
   onProjectChanged,
   onStatus,
@@ -336,8 +340,10 @@ export function WordGenerationWorkspace({
   onAiDraftConsumed,
 }: {
   application: ProjectApplication;
+  phonologyApplication?: Phase6Application;
   service?: WordGenerationService;
   languageId: string;
+  stageId?: string;
   dictionary: ReactNode;
   onProjectChanged: (snapshot: ProjectSnapshot) => void;
   onStatus: (message: string) => void;
@@ -372,16 +378,16 @@ export function WordGenerationWorkspace({
       ["operations", "批量记录"],
     ]} />
     {tab === "dictionary" && dictionary}
-    {tab === "profile" && <ProfileAndGenerate application={application} service={service} languageId={languageId} profiles={profiles} lexemes={lexemes} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} onReview={() => setTab("review")} aiDraft={aiDraft} onAiDraftConsumed={onAiDraftConsumed} />}
+    {tab === "profile" && <ProfileAndGenerate application={application} phonologyApplication={phonologyApplication} service={service} languageId={languageId} stageId={stageId} profiles={profiles} lexemes={lexemes} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} onReview={() => setTab("review")} aiDraft={aiDraft} onAiDraftConsumed={onAiDraftConsumed} />}
     {tab === "review" && <CandidateReview application={application} batches={batches} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} />}
     {tab === "operations" && <OperationHistory application={application} languageId={languageId} reload={reload} onProjectChanged={onProjectChanged} onStatus={onStatus} />}
   </div>;
 }
 
 function ProfileAndGenerate({
-  application, service, languageId, profiles, lexemes, reload, onProjectChanged, onStatus, onReview, aiDraft, onAiDraftConsumed,
+  application, phonologyApplication, service, languageId, stageId, profiles, lexemes, reload, onProjectChanged, onStatus, onReview, aiDraft, onAiDraftConsumed,
 }: {
-  application: ProjectApplication; service?: WordGenerationService; languageId: string; profiles: WordGenerationProfile[]; lexemes: Lexeme[];
+  application: ProjectApplication; phonologyApplication?: Phase6Application; service?: WordGenerationService; languageId: string; stageId?: string; profiles: WordGenerationProfile[]; lexemes: Lexeme[];
   reload: () => Promise<void>; onProjectChanged: (snapshot: ProjectSnapshot) => void; onStatus: (message: string) => void; onReview: () => void;
   aiDraft?: AiProposalDraft; onAiDraftConsumed?: (requestId: string) => void;
 }) {
@@ -481,6 +487,26 @@ function ProfileAndGenerate({
       onStatus("造词配置已删除。");
     } catch (reason) { setError(messageOf(reason)); }
   };
+  const syncFromPhonology = async () => {
+    if (!phonologyApplication) {
+      setError("正式音系尚未连接。");
+      return;
+    }
+    try {
+      const phonology = await phonologyApplication.getPhonology(languageId, stageId);
+      const synced = syncWordGenerationConfigFromPhonology(phonology, parse());
+      if (!synced.categories.length || !synced.templates.length) {
+        throw new Error("正式音系至少需要辅音或元音，并设置一个音节模板。");
+      }
+      setCategoriesText(formatCategories(synced));
+      setTemplatesText(formatTemplates(synced));
+      setForbiddenText(synced.forbiddenPatterns.join("\n"));
+      setError("");
+      onStatus("已从正式音系填入草稿；请检查权重后验证并保存。");
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
   const generate = async () => {
     if (!service) { setError("造词引擎尚未连接。"); return; }
     const controller = new AbortController();
@@ -559,8 +585,9 @@ function ProfileAndGenerate({
         <label><span>每个候选最大尝试次数</span><input type="number" min={1} max={10000} value={maxAttempts} onChange={(event) => setMaxAttempts(Number(event.target.value))} /></label>
         <label className={styles.phase3Wide}><span>禁配正则（每行一条，可留空）</span><textarea value={forbiddenText} onChange={(event) => setForbiddenText(event.target.value)} placeholder={"(.)\\1\\1\n^[aeiou]"} /></label>
         <label className={styles.phase3Wide}><span>有序改写（每行“匹配式 =&gt; 替换式”，可留空）</span><textarea value={rewritesText} onChange={(event) => setRewritesText(event.target.value)} placeholder="aa => ā" /></label>
-        <p className={styles.phase3Hint}>该配置目前独立于“语音学”页面；未来可同步正式音位表。多字符音位（如 th）会作为一个符号处理。</p>
+        <p className={styles.phase3Hint}>正式音系提供音位、音节模板和禁配；权重、音节数量与改写仍由当前造词配置控制。</p>
         <div className={styles.phase3Actions}>
+          <button disabled={!phonologyApplication} onClick={() => void syncFromPhonology()}>从正式音系同步</button>
           {current && <button onClick={() => void deleteProfile()}>删除</button>}
           {current && <button onClick={() => void copyProfile()}>复制</button>}
           <button onClick={() => void saveProfile()}>验证并保存</button>

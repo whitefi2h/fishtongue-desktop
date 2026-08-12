@@ -22,6 +22,7 @@ export default function ScCodeEditor({
   const view = useRef<EditorView | null>(null);
   const errorLine = errorLocation?.line;
   const errorColumn = errorLocation?.column;
+  const initialCodeRef = useRef(initialCode ?? "");
   // Prevents state variables used in onUpdateCode from being captured.
   const onUpdateCodeRef = useRef<(newCode: string) => void>(() => {});
 
@@ -89,7 +90,9 @@ export default function ScCodeEditor({
     const highlighter = classHighlighter;
 
     const onUpdate = EditorView.updateListener.of((v) => {
-      onUpdateCodeRef.current(v.state.doc.toString());
+      if (v.docChanged) {
+        onUpdateCodeRef.current(v.state.doc.toString());
+      }
     });
 
     return EditorState.create({
@@ -119,7 +122,7 @@ export default function ScCodeEditor({
       return;
     }
 
-    const startState = createState.current("");
+    const startState = createState.current(initialCodeRef.current);
 
     view.current = new EditorView({
       state: startState,

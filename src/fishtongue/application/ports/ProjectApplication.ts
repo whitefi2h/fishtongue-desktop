@@ -38,6 +38,7 @@ export interface ProjectApplication {
   listLanguages(): Promise<Language[]>;
   createLanguage(name: string): Promise<Language>;
   renameLanguage(id: string, name: string): Promise<void>;
+  saveLanguageProfile?(id: string, profile: NonNullable<Language["profile"]>): Promise<void>;
   deleteLanguage(id: string): Promise<void>;
   listLexemes(languageId: string): Promise<Lexeme[]>;
   saveLexeme(lexeme: Lexeme): Promise<void>;

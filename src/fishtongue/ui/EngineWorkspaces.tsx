@@ -36,6 +36,7 @@ export function EvolutionWorkspace({
   onAiDraftConsumed,
   historyApplication,
   selectedStageId,
+  onStageDataChanged,
 }: {
   application: ProjectApplication;
   service?: SoundChangeService;
@@ -45,6 +46,7 @@ export function EvolutionWorkspace({
   onAiDraftConsumed?: (requestId: string) => void;
   historyApplication?: Phase5Application;
   selectedStageId?: string;
+  onStageDataChanged?: () => void;
 }) {
   const enabled = live && Boolean(service);
   const [evolution, setEvolution] = useState<Evolution | null>(null);
@@ -402,6 +404,7 @@ export function EvolutionWorkspace({
           setStageOperations(operations);
         }}
         onError={(reason) => setError(errorMessage(reason))}
+        onCommitted={onStageDataChanged}
       />
     </section>}
   </div>;
@@ -413,35 +416,55 @@ function StageEvolutionReview({
   operations,
   onChanged,
   onError,
+  onCommitted,
 }: {
   application: Phase5Application;
   batches: StageEvolutionBatch[];
   operations: StageEvolutionOperation[];
   onChanged: () => Promise<void>;
   onError: (reason: unknown) => void;
+  onCommitted?: () => void;
 }) {
   const batch = batches.find((value) => value.status === "draft");
   const activeOperation = operations.find((value) => !value.undoneAt);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  useEffect(() => setSelectedIds(new Set()), [batch?.id]);
+  const updateSelected = async (status: "accepted" | "rejected") => {
+    if (!batch || !selectedIds.size) return;
+    for (const candidate of batch.candidates.filter((value) => selectedIds.has(value.id))) {
+      await application.saveStageEvolutionCandidate(batch.id, { ...candidate, status });
+    }
+    setSelectedIds(new Set());
+    await onChanged();
+  };
   if (!batch) return <div className={styles.stageEvolutionEmpty}>
     <p className={styles.engineEmpty}>没有待审核的阶段演化批次。</p>
     {activeOperation && <button
       onClick={() => {
         void application.undoStageEvolutionOperation(activeOperation.id)
-          .then(onChanged).catch(onError);
+          .then(onChanged).then(onCommitted).catch(onError);
       }}>撤销最近的阶段提交</button>}
   </div>;
   return <div className={styles.stageEvolutionReview}>
+    <div className={styles.stageReviewActions}>
+      <span>已选择 {selectedIds.size} 项</span>
+      <button disabled={!selectedIds.size} onClick={() => void updateSelected("accepted").catch(onError)}>接受所选</button>
+      <button disabled={!selectedIds.size} onClick={() => void updateSelected("rejected").catch(onError)}>拒绝所选</button>
+    </div>
     <table className={styles.dataTable}><thead><tr>
-      <th>保留</th><th>来源</th><th>结果</th><th>状态</th>
+      <th><input type="checkbox" aria-label="选择全部候选"
+        checked={batch.candidates.length > 0 && selectedIds.size === batch.candidates.length}
+        onChange={(event) => setSelectedIds(event.target.checked
+          ? new Set(batch.candidates.map((candidate) => candidate.id))
+          : new Set())} /></th><th>来源</th><th>结果</th><th>状态</th>
     </tr></thead><tbody>{batch.candidates.map((candidate) => <tr key={candidate.id}>
-      <td><input type="checkbox" checked={candidate.status === "accepted"}
-        disabled={candidate.status === "committed"}
-        onChange={(event) => {
-          void application.saveStageEvolutionCandidate(batch.id, {
-            ...candidate,
-            status: event.target.checked ? "accepted" : "rejected",
-          }).then(onChanged).catch(onError);
-        }} /></td>
+      <td><input type="checkbox" aria-label={`选择 ${candidate.sourceForm}`}
+        checked={selectedIds.has(candidate.id)} disabled={candidate.status === "committed"}
+        onChange={(event) => setSelectedIds((current) => {
+          const next = new Set(current);
+          if (event.target.checked) next.add(candidate.id); else next.delete(candidate.id);
+          return next;
+        })} /></td>
       <td>{candidate.sourceForm}</td>
       <td><input value={candidate.resultForm}
         onChange={(event) => {
@@ -460,7 +483,7 @@ function StageEvolutionReview({
         )}
         onClick={() => {
           void application.commitStageEvolutionBatch(batch.id)
-            .then(onChanged).catch(onError);
+            .then(onChanged).then(onCommitted).catch(onError);
         }}>提交到目标阶段</button>
     </div>
   </div>;

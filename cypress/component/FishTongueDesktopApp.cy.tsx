@@ -1,6 +1,7 @@
 import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/DesktopWindowPort";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
-import { Evolution, InflectionSystem, Language, Lexeme, RecoveryCandidate } from "@/fishtongue/domain/models";
+import { Evolution, InflectionSystem, Language, LanguageStage, Lexeme, RecoveryCandidate } from "@/fishtongue/domain/models";
 import FishTongueDesktopApp from "@/fishtongue/ui/FishTongueDesktopApp";
 
 class TestWindowPort implements DesktopWindowPort {
@@ -116,6 +117,58 @@ class TestApplication implements ProjectApplication {
   async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
   async saveInflectionSystem() { throw new Error("prototype must not persist"); }
   getSnapshot() { return this.snapshot; }
+}
+
+function historyApplicationFixture(): Phase5Application {
+  const now = "2026-08-07T00:00:00.000Z";
+  const stages = (languageId: string): LanguageStage[] => [
+    {
+      id: `${languageId}:default-stage`, languageId, name: "默认状态",
+      kind: "internal_default", documentationStatus: "recorded",
+      storageMode: "independent_snapshot", position: 0, visible: false,
+      createdAt: now, updatedAt: now,
+    },
+    {
+      id: `${languageId}:old`, languageId, name: "古典期",
+      kind: "historical_stage", documentationStatus: "recorded",
+      storageMode: "independent_snapshot", startLabel: "前 420", endLabel: "前 80",
+      position: 1, visible: true, createdAt: now, updatedAt: now,
+    },
+    {
+      id: `${languageId}:late`, languageId, name: "北迁后期",
+      kind: "historical_stage", documentationStatus: "partial",
+      storageMode: "inherited_delta", chronologyParentId: `${languageId}:old`,
+      dataBaseStageId: `${languageId}:old`, startLabel: "340", endLabel: "680",
+      position: 2, visible: true, createdAt: now, updatedAt: now,
+    },
+    {
+      id: `${languageId}:unrecorded`, languageId, name: "失落期",
+      kind: "historical_stage", documentationStatus: "unrecorded",
+      storageMode: "no_data", chronologyParentId: `${languageId}:late`,
+      startLabel: "680", endLabel: "年代不明",
+      position: 3, visible: true, createdAt: now, updatedAt: now,
+    },
+  ];
+  return {
+    listStages: async (languageId) => stages(languageId),
+    getStageContext: async (stageId) => ({ stageId, background: "北迁后形成的书面语阶段。", evidenceNotes: "铭文与借词证据。", sources: [], updatedAt: now }),
+    listLanguageRelations: async () => [
+      {
+        id: "relation-root-north", projectId: "p1",
+        sourceLanguageId: "language-1", targetLanguageId: "language-2",
+        kind: "genetic", isPrimary: true, confidence: "confirmed", notes: "",
+        createdAt: now, updatedAt: now,
+      },
+      {
+        id: "relation-root-island", projectId: "p1",
+        sourceLanguageId: "language-1", targetLanguageId: "language-3",
+        kind: "genetic", isPrimary: true, confidence: "probable", notes: "",
+        createdAt: now, updatedAt: now,
+      },
+    ],
+    listHistoricalEvents: async () => [],
+    listEtymologyRelations: async () => [],
+  } as unknown as Phase5Application;
 }
 
 describe("FishTongue Phase 1.5 desktop prototype", () => {
@@ -594,5 +647,52 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("input[name='global-search']").parent().should(($field) => {
       expect(getComputedStyle($field[0]).outlineStyle).to.equal("solid");
     });
+  });
+
+  it("renders the Phase 5 historical workspaces as dense desktop tools", () => {
+    const app = new TestApplication();
+    const history = historyApplicationFixture();
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} historyApplication={history} />);
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("历史工作台验收");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("共同祖语");
+    cy.contains("button", "进入语言工作区").click();
+
+    for (const languageName of ["北海语", "岛屿语"]) {
+      cy.get("[aria-label='应用菜单']").contains("button", "项目").click();
+      cy.get("[role='menu']").contains("button", "新建语言").click();
+      cy.get("input[name='language-name']").clear().type(languageName);
+      cy.contains("button", "进入语言工作区").click();
+    }
+
+    cy.get("[aria-label='工作区导航']").contains("button", "阶段管理").click();
+    cy.contains("button", "北迁后期").click();
+    cy.contains("label", "数据基础").find("select")
+      .should("not.contain.text", "失落期")
+      .and("not.contain.text", "无记录");
+    cy.screenshot("phase-5/stages-dark-1440x900");
+
+    cy.get("button[title='切换主题']").click();
+    cy.screenshot("phase-5/stages-light-1440x900");
+    cy.get("button[title='切换主题']").click();
+
+    cy.get("[aria-label='工作区导航']").contains("button", "方言").click();
+    cy.contains("还没有轻量方言").should("be.visible");
+    cy.screenshot("phase-5/dialects-empty-dark-1440x900");
+
+    cy.get("[aria-label='工作区导航']").contains("button", "基本属性").click();
+    cy.contains("语言关系").scrollIntoView().should("be.visible");
+    cy.screenshot("phase-5/language-properties-dark-1440x900");
+
+    cy.get("[aria-label='工作区导航']").contains("button", "项目主页").click();
+    cy.get("[aria-label='工作区导航']").contains("button", "语言谱系").click();
+    cy.get('[aria-label="当前缩放比例"]').should("be.visible");
+    cy.screenshot("phase-5/genealogy-dark-1440x900");
+    cy.get("button[title='切换主题']").click();
+    cy.get("button[title='切换主题']").click();
+    cy.get("[data-theme='light']").should("exist");
+    cy.screenshot("phase-5/genealogy-light-1440x900");
   });
 });

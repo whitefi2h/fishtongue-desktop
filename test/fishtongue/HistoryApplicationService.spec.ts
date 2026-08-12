@@ -103,4 +103,59 @@ describe("HistoryApplicationService stage persistence", () => {
     expect(saveWithContext).not.toHaveBeenCalled();
     expect(markProjectChanged).not.toHaveBeenCalled();
   });
+
+  it("refuses an unrecorded stage as another stage's data base", async () => {
+    const { service, saveWithContext, markProjectChanged, base } = createService();
+    const unrecorded: LanguageStage = {
+      ...historicalStage(base),
+      id: "unrecorded",
+      name: "无记录时期",
+      documentationStatus: "unrecorded",
+      storageMode: "no_data",
+      dataBaseStageId: undefined,
+    };
+    const repository = (service as unknown as { stages: { list: jest.Mock } }).stages;
+    repository.list.mockResolvedValue([base, unrecorded]);
+
+    await expect(service.saveStageWithContext(
+      { ...historicalStage(base), dataBaseStageId: unrecorded.id },
+      stageContext()
+    )).rejects.toThrow("不能作为数据基础");
+
+    expect(saveWithContext).not.toHaveBeenCalled();
+    expect(markProjectChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("HistoryApplicationService etymology safety", () => {
+  it("refuses borrowing between two lexemes in the same language", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const project = {
+      getSnapshot: () => ({
+        project: { id: "project" },
+        languages: [{ id: "language" }],
+      }),
+      listLexemes: jest.fn().mockResolvedValue([
+        { id: "source", languageId: "language" },
+        { id: "target", languageId: "language" },
+      ]),
+      markProjectChanged: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new HistoryApplicationService(
+      project as never,
+      {} as never,
+      {} as never,
+      { list: jest.fn().mockResolvedValue([]) } as never,
+      { save } as never,
+      {} as never,
+      {} as never
+    );
+
+    await expect(service.saveEtymologyRelation({
+      id: "relation", projectId: "project", sourceLexemeId: "source",
+      targetLexemeId: "target", kind: "borrowing", sourceForm: "",
+      confidence: "confirmed", notes: "", createdAt: now, updatedAt: now,
+    })).rejects.toThrow("不能从自身借入");
+    expect(save).not.toHaveBeenCalled();
+  });
 });

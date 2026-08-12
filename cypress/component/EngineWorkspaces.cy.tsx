@@ -228,7 +228,9 @@ describe("Phase 2 engine workspaces", () => {
     />);
     cy.contains("button", "生成审核批次").click();
     cy.contains("td", "ama").should("be.visible");
-    cy.get('input[type="checkbox"]').check();
+    cy.get('input[aria-label="选择全部候选"]').check();
+    cy.contains("button", "接受所选").click();
+    cy.contains("td", "已接受").should("be.visible");
     cy.contains("button", "提交到目标阶段").click().then(() => {
       expect(committed).to.equal(true);
       expect(batch?.sourceStageId).to.equal("source");

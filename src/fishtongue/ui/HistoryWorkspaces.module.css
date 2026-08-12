@@ -1,3 +1,1360 @@
-.workspace{display:grid;min-height:520px;gap:12px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px}.toolbarActions{display:flex;gap:6px}.button,.primary,.danger{height:32px;padding:0 10px;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-sm);background:var(--ft-color-bg-workspace);color:var(--ft-color-text-primary)}.button:hover{background:var(--ft-color-bg-hover)}.primary{border-color:var(--ft-color-accent);background:var(--ft-color-accent);color:var(--ft-color-text-on-accent)}.danger{color:var(--ft-color-danger)}.split{display:grid;min-height:500px;grid-template-columns:280px minmax(0,1fr);overflow:hidden;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-md);background:var(--ft-color-bg-workspace)}.list{padding:6px;border-right:1px solid var(--ft-color-border-default);background:var(--ft-color-bg-subtle);overflow:auto}.listButton{display:grid;width:100%;grid-template-columns:12px minmax(0,1fr);gap:8px;align-items:center;min-height:52px;padding:6px 8px;border:0;border-radius:var(--ft-radius-sm);background:transparent;color:var(--ft-color-text-primary);text-align:left}.listButton[data-active=true]{background:var(--ft-color-accent-soft)}.listButton span:last-child{display:grid;min-width:0}.listButton small,.muted{color:var(--ft-color-text-secondary);font-size:12px}.dot{width:8px;height:8px;border:2px solid var(--ft-color-accent);border-radius:50%}.dot[data-status=unrecorded]{border-color:var(--ft-color-border-strong);background:var(--ft-color-border-strong)}.detail{display:grid;align-content:start;gap:14px;padding:16px;overflow:auto}.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:grid;gap:5px;color:var(--ft-color-text-secondary);font-size:12px}.field[data-wide=true]{grid-column:1/-1}.field input,.field select,.field textarea{width:100%;min-width:0;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-sm);background:var(--ft-color-bg-subtle);color:var(--ft-color-text-primary)}.field input,.field select{height:34px;padding:0 8px}.field textarea{min-height:88px;padding:8px;resize:vertical}.notice{padding:10px;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-sm);background:var(--ft-color-bg-subtle);color:var(--ft-color-text-secondary);font-size:12px}.dataTable{width:100%;border-collapse:collapse;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-md);background:var(--ft-color-bg-workspace)}.dataTable th,.dataTable td{height:42px;padding:6px 10px;border-bottom:1px solid var(--ft-color-border-default);text-align:left}.dataTable th{background:var(--ft-color-bg-subtle);color:var(--ft-color-text-secondary);font-size:12px;font-weight:500}.dataTable tr:last-child td{border-bottom:0}.dataTable select,.dataTable input{width:100%;height:30px;border:1px solid transparent;border-radius:var(--ft-radius-sm);background:transparent;color:var(--ft-color-text-primary)}.dataTable select:focus,.dataTable input:focus{border-color:var(--ft-color-focus);background:var(--ft-color-bg-subtle)}.empty{display:grid;min-height:320px;place-content:center;gap:8px;text-align:center;color:var(--ft-color-text-secondary)}.tree{display:grid;gap:10px;padding:16px;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-md);background:var(--ft-color-bg-subtle)}.treeRow{display:grid;grid-template-columns:minmax(140px,1fr) 36px minmax(140px,1fr) 110px auto;align-items:center;gap:8px}.treeNode{padding:10px;border:1px solid var(--ft-color-border-default);border-radius:var(--ft-radius-sm);background:var(--ft-color-bg-workspace)}.badge{display:inline-flex;width:max-content;padding:2px 7px;border:1px solid var(--ft-color-border-default);border-radius:999px;color:var(--ft-color-text-secondary);font-size:11px}.footer{display:flex;justify-content:flex-end;gap:6px;border-top:1px solid var(--ft-color-border-default);padding-top:12px}
-@container workspace (max-width:760px){.split{grid-template-columns:minmax(0,1fr)}.list{max-height:180px;border-right:0;border-bottom:1px solid var(--ft-color-border-default)}.formGrid{grid-template-columns:minmax(0,1fr)}.treeRow{grid-template-columns:minmax(0,1fr)}}
-.primary{color:var(--ft-color-on-accent)}.primary:disabled{opacity:.55}
+.workspace {
+  display: grid;
+  min-height: 0;
+  gap: 12px;
+  color: var(--ft-color-text-primary);
+}
+.sectionToolbar {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.sectionToolbar > div {
+  display: grid;
+  gap: 2px;
+}
+.sectionToolbar strong {
+  font-size: 14px;
+}
+.sectionToolbar span {
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.iconDanger {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+  color: var(--ft-color-text-primary);
+  font: inherit;
+}
+.primaryButton {
+  border-color: var(--ft-color-accent);
+  background: var(--ft-color-accent);
+  color: var(--ft-color-on-accent);
+}
+.secondaryButton:hover,
+.iconDanger:hover {
+  background: var(--ft-color-bg-hover);
+}
+.dangerButton,
+.iconDanger {
+  color: var(--ft-color-danger);
+}
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.masterDetail {
+  display: grid;
+  min-height: 560px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-workspace);
+}
+.masterPane,
+.timelinePane {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--ft-color-border-default);
+  background: var(--ft-color-bg-subtle);
+}
+.masterSummary {
+  height: 36px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.stageItem,
+.timelinePane > button {
+  display: grid;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  border: 0;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  background: transparent;
+  color: var(--ft-color-text-primary);
+  text-align: left;
+}
+.stageItem {
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 7px 10px;
+}
+.stageItem:hover,
+.timelinePane > button:hover {
+  background: var(--ft-color-bg-hover);
+}
+.stageItem[data-active="true"],
+.timelinePane > button[data-active="true"] {
+  background: var(--ft-color-bg-selected);
+}
+.stageItem i {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--ft-color-accent);
+  border-radius: 50%;
+}
+.stageItem i[data-status="unrecorded"] {
+  border-color: var(--ft-color-border-strong);
+  background: var(--ft-color-border-strong);
+}
+.stageItem span,
+.timelinePane > button span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.stageItem small,
+.timelinePane > button small {
+  overflow: hidden;
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stageItem em {
+  color: var(--ft-color-text-tertiary);
+  font-size: 11px;
+  font-style: normal;
+}
+.detailPane {
+  min-width: 0;
+  overflow: auto;
+}
+.editorForm {
+  display: grid;
+  min-height: 100%;
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+}
+.editorHeader {
+  display: flex;
+  min-height: 34px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.editorHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.editorHeader h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.editorHeader > span {
+  color: var(--ft-color-text-tertiary);
+  font-size: 11px;
+}
+.badge {
+  display: inline-flex;
+  width: max-content;
+  padding: 2px 7px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: 999px;
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+.field {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 5px;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.field[data-wide="true"] {
+  grid-column: 1/-1;
+}
+.field > span {
+  font-weight: 500;
+}
+.field small {
+  color: var(--ft-color-text-tertiary);
+  font-size: 11px;
+}
+.periodFields {
+  display: grid;
+  grid-column: 1/-1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-primary);
+  font: inherit;
+}
+.field input,
+.field select {
+  height: 34px;
+  padding: 0 9px;
+}
+.field textarea {
+  min-height: 84px;
+  padding: 8px;
+  resize: vertical;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--ft-color-focus);
+  outline: 2px solid color-mix(in srgb, var(--ft-color-focus) 20%, transparent);
+  outline-offset: 0;
+}
+.field select:disabled {
+  color: var(--ft-color-text-disabled);
+}
+.inlineNotice {
+  padding: 9px 10px;
+  border-left: 3px solid var(--ft-color-warning);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.formFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ft-color-border-default);
+}
+.dangerButton {
+  margin-right: auto;
+}
+.emptyState {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+}
+.emptyState strong {
+  font-size: 14px;
+}
+.emptyState span {
+  max-width: 420px;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.emptyState button {
+  margin-top: 6px;
+}
+.genealogyLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 12px;
+}
+.diagramPanel,
+.relationEditor,
+.compactSection,
+.etymologyEditor {
+  min-width: 0;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-workspace);
+}
+.diagramPanel > header,
+.relationEditor > header,
+.compactSection > header,
+.etymologyEditor > header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+}
+.diagramPanel header span,
+.relationEditor header span,
+.compactSection header span,
+.etymologyEditor header span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.relationEditor,
+.etymologyEditor {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  padding-bottom: 12px;
+}
+.relationEditor > header,
+.etymologyEditor > header {
+  margin-bottom: 1px;
+}
+.relationEditor > .field,
+.relationEditor > button,
+.etymologyEditor > .field,
+.etymologyEditor > button {
+  margin-inline: 12px;
+}
+.languageForest {
+  min-height: 360px;
+  overflow: auto;
+  padding: 24px;
+}
+.languageForest ul {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.languageForest li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+}
+.languageForest li > ul {
+  position: relative;
+}
+.languageForest li > ul:before {
+  position: absolute;
+  top: -12px;
+  right: 12%;
+  left: 12%;
+  height: 1px;
+  background: var(--ft-color-border-strong);
+  content: "";
+}
+.languageForest li > ul > li:before {
+  position: absolute;
+  top: -20px;
+  width: 1px;
+  height: 20px;
+  background: var(--ft-color-border-strong);
+  content: "";
+}
+.languageNode {
+  display: flex;
+  min-width: 130px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+}
+.languageNode > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-accent-soft);
+  color: var(--ft-color-accent);
+  font-size: 12px;
+}
+.compactSection {
+  overflow: hidden;
+}
+.relationList,
+.etymologyList {
+  display: grid;
+}
+.relationList > div {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: minmax(100px, 1fr) 80px minmax(100px, 1fr) 80px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+}
+.relationList > div:last-child {
+  border-bottom: 0;
+}
+.relationList b {
+  color: var(--ft-color-accent);
+  font-size: 12px;
+}
+.relationList small {
+  color: var(--ft-color-text-secondary);
+}
+.inlineEmpty {
+  padding: 18px 12px;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.timelinePane {
+  padding-top: 8px;
+}
+.timelinePane > button {
+  position: relative;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 0;
+}
+.timelinePane > button i {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--ft-color-accent);
+  border-radius: 50%;
+  background: var(--ft-color-bg-subtle);
+}
+.timelinePane > button:not(:last-of-type):after {
+  position: absolute;
+  top: 34px;
+  bottom: -22px;
+  left: 16px;
+  width: 1px;
+  background: var(--ft-color-border-default);
+  content: "";
+}
+.participantField {
+  grid-column: 1/-1;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+}
+.participantField legend {
+  padding: 0 4px;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.participantField > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.participantField label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.etymologyModebar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+}
+.etymologyModebar button {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ft-color-text-secondary);
+  font: inherit;
+}
+.etymologyModebar button[aria-pressed="true"] {
+  border-bottom-color: var(--ft-color-accent);
+  color: var(--ft-color-text-primary);
+  font-weight: 600;
+}
+.etymologyLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
+}
+.etymologyLayout[data-mode="batch"] {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+.etymologyLayout[data-mode="batch"][data-focus-borrowing="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.inlineHelp {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  margin-inline-start: 6px;
+  place-items: center;
+  border: 1px solid var(--ft-color-border-strong);
+  border-radius: 50%;
+  color: var(--ft-color-text-secondary);
+  cursor: help;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.etymologyList > div {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+}
+.etymologyList > div:last-child {
+  border-bottom: 0;
+}
+.etymologyList > div[data-active="true"] {
+  background: var(--ft-color-bg-selected);
+}
+.etymologyList span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.etymologyList strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etymologyList small {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.etymologyList b {
+  color: var(--ft-color-accent);
+  font-size: 12px;
+}
+.rowActions {
+  display: flex !important;
+  grid-auto-flow: column;
+  gap: 4px !important;
+}
+.rowActions button {
+  height: 28px;
+}
+.iconDanger {
+  height: 28px;
+  padding-inline: 8px;
+}
+.targetActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-inline: 12px;
+}
+.inlineLexemeForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border-block: 1px solid var(--ft-color-border-subtle);
+  background: var(--ft-color-bg-subtle);
+}
+.inlineLexemeForm > .field,
+.inlineLexemeForm > button {
+  margin: 0;
+}
+.inlineLexemeForm > button {
+  grid-column: 1/-1;
+}
+.batchEditor {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-workspace);
+}
+.batchEditor > header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+}
+.batchEditor > header span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.batchFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+}
+.batchTable {
+  min-width: 0;
+  overflow: auto;
+  border-block: 1px solid var(--ft-color-border-default);
+}
+.batchTable > div {
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 42px minmax(130px, 1fr) minmax(120px, 1fr) minmax(
+      140px,
+      1.2fr
+    );
+  align-items: center;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+}
+.batchTable > div:last-child {
+  border-bottom: 0;
+}
+.batchTable > div > * {
+  min-width: 0;
+  margin: 0 8px;
+}
+.batchTable > div > span {
+  display: grid;
+}
+.batchTable small {
+  overflow: hidden;
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batchTable input:not([type="checkbox"]) {
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-primary);
+  font: inherit;
+}
+.batchHead {
+  min-height: 32px !important;
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.batchEmpty {
+  display: block !important;
+  padding: 20px;
+  color: var(--ft-color-text-secondary);
+  text-align: center;
+}
+.batchFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.editorHeaderActions {
+  display: flex !important;
+  grid-auto-flow: column !important;
+  align-items: center;
+  gap: 6px !important;
+}
+.modeSwitch {
+  display: inline-flex !important;
+  padding: 2px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+}
+.modeSwitch button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--ft-radius-sm) - 1px);
+  background: transparent;
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.modeSwitch button[aria-pressed="true"] {
+  background: var(--ft-color-bg-workspace);
+  color: var(--ft-color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--ft-color-border-subtle);
+}
+.genealogyCanvasPanel {
+  position: relative;
+  display: grid;
+  min-height: 600px;
+  grid-template-rows: 42px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-workspace);
+}
+.genealogyToolbar {
+  position: relative;
+  z-index: var(--ft-z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+  background: var(--ft-color-bg-subtle);
+}
+.zoomControls,
+.genealogyLayers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.zoomControls button,
+.genealogyLayers button,
+.helpButton {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+  color: var(--ft-color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+.zoomControls button:hover,
+.genealogyLayers button:hover,
+.helpButton:hover {
+  background: var(--ft-color-bg-hover);
+  color: var(--ft-color-text-primary);
+}
+.zoomControls output {
+  min-width: 48px;
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+  text-align: center;
+}
+.genealogyLayers button[data-active="true"] {
+  border-color: var(--ft-color-accent);
+  background: var(--ft-color-accent-soft);
+  color: var(--ft-color-accent);
+}
+.genealogyHelp {
+  position: absolute;
+  z-index: var(--ft-z-dropdown);
+  top: 48px;
+  right: 8px;
+  display: grid;
+  width: 300px;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-strong);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+  box-shadow: var(--ft-shadow-overlay);
+  font-size: 12px;
+}
+.genealogyHelp span {
+  color: var(--ft-color-text-secondary);
+  line-height: 1.55;
+}
+.genealogyViewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  background-color: var(--ft-color-bg-workspace);
+  background-image: radial-gradient(
+    circle,
+    var(--ft-color-border-subtle) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+.genealogyViewport[data-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+.genealogyEmpty {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  color: var(--ft-color-text-secondary);
+}
+.genealogyEdges {
+  fill: none;
+  pointer-events: none;
+}
+.genealogyTreeEdge,
+.genealogyOverlayEdge {
+  stroke: var(--ft-color-border-strong);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.genealogyOverlayEdge[data-kind="contact"] {
+  stroke: var(--ft-color-accent);
+  stroke-dasharray: 6 4;
+}
+.genealogyOverlayEdge[data-kind="dialect"] {
+  stroke: var(--ft-color-text-tertiary);
+  stroke-dasharray: 2 4;
+}
+.genealogyNode {
+  cursor: default;
+}
+.genealogyNodeBody {
+  fill: var(--ft-color-bg-workspace);
+  stroke: var(--ft-color-border-default);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.genealogyNode:hover .genealogyNodeBody,
+.genealogyNode:focus-visible .genealogyNodeBody {
+  stroke: var(--ft-color-border-strong);
+}
+.genealogyNode[data-selected="true"] .genealogyNodeBody {
+  stroke: var(--ft-color-accent);
+  stroke-width: 2;
+}
+.genealogyAvatar {
+  fill: var(--ft-color-accent-soft);
+}
+.genealogyAvatarText {
+  fill: var(--ft-color-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.genealogyNodeTitle {
+  fill: var(--ft-color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.genealogyNodeMeta {
+  fill: var(--ft-color-text-secondary);
+  font-size: 10px;
+}
+.genealogyStageToggle {
+  cursor: pointer;
+}
+.genealogyStageToggle rect {
+  fill: var(--ft-color-bg-hover);
+  stroke: var(--ft-color-border-default);
+}
+.genealogyStageToggle text {
+  fill: var(--ft-color-text-secondary);
+  font-size: 14px;
+}
+.genealogyStageRow {
+  cursor: pointer;
+}
+.genealogyStageRow line {
+  stroke: var(--ft-color-border-subtle);
+  vector-effect: non-scaling-stroke;
+}
+.genealogyStageRow circle {
+  fill: var(--ft-color-accent);
+}
+.genealogyStageRow text {
+  fill: var(--ft-color-text-secondary);
+  font-size: 9px;
+}
+.genealogyStageRow text:last-child {
+  fill: var(--ft-color-text-tertiary);
+  font-size: 8px;
+}
+.propertiesWorkspace {
+  display: grid;
+  min-height: 0;
+  gap: 12px;
+  color: var(--ft-color-text-primary);
+}
+.propertiesHeading {
+  position: relative;
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.propertiesHeading > div {
+  display: grid;
+  margin-right: auto;
+  gap: 2px;
+}
+.propertiesHeading > div strong {
+  font-size: 16px;
+}
+.propertiesHeading > div span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.helpButton {
+  width: 28px;
+  padding: 0;
+  border-radius: 50%;
+}
+.propertiesHelp {
+  position: absolute;
+  z-index: var(--ft-z-dropdown);
+  top: 42px;
+  right: 0;
+  display: grid;
+  width: 330px;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-strong);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+  box-shadow: var(--ft-shadow-overlay);
+  font-size: 12px;
+}
+.propertiesHelp span {
+  color: var(--ft-color-text-secondary);
+  line-height: 1.5;
+}
+.propertiesPanel {
+  overflow: hidden;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-workspace);
+}
+.propertiesPanel > header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ft-color-border-default);
+}
+.propertiesPanel > header span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.propertiesGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 12px;
+}
+.panelActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panelActions .secondaryButton {
+  height: 28px;
+}
+.relationshipTable {
+  display: grid;
+}
+.relationshipTable > div {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 100px minmax(150px, 1fr) minmax(130px, 1fr) 90px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  font-size: 12px;
+}
+.relationshipTable > div.relationshipTableHead {
+  min-height: 32px;
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+}
+.relationshipTable small {
+  color: var(--ft-color-text-secondary);
+}
+.relationshipEditor {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 12px;
+  border-top: 1px solid var(--ft-color-border-default);
+  background: var(--ft-color-bg-subtle);
+}
+.relationshipEditor > footer {
+  display: flex;
+  grid-column: 1/-1;
+  justify-content: flex-end;
+}
+.lexemeCombobox {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  margin-inline: 12px;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.lexemeCombobox > label {
+  display: grid;
+  gap: 5px;
+}
+.lexemeCombobox input {
+  width: 100%;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-primary);
+  font: inherit;
+}
+.lexemeResults {
+  display: grid;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+}
+.lexemeResults button {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(0, 2fr);
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  background: transparent;
+  color: var(--ft-color-text-primary);
+  text-align: left;
+}
+.lexemeResults button:last-child {
+  border-bottom: 0;
+}
+.lexemeResults button:hover,
+.lexemeResults button[aria-selected="true"] {
+  background: var(--ft-color-bg-selected);
+}
+.lexemeResults span,
+.lexemeResults small {
+  overflow: hidden;
+  color: var(--ft-color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lexemeSelection {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--ft-color-accent);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-accent-soft);
+}
+.lexemeSelection span {
+  display: flex;
+  gap: 7px;
+}
+.lexemeSelection button {
+  border: 0;
+  background: transparent;
+  color: var(--ft-color-text-secondary);
+  font: inherit;
+  font-size: 11px;
+}
+.lexemeNoResults {
+  color: var(--ft-color-text-tertiary);
+}
+@container workspace (max-width:900px) {
+  .genealogyLayout,
+  .etymologyLayout,
+  .etymologyLayout[data-mode="batch"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .relationEditor,
+  .etymologyEditor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .relationEditor > header,
+  .etymologyEditor > header {
+    grid-column: 1/-1;
+  }
+  .relationEditor > button,
+  .etymologyEditor > button {
+    align-self: end;
+  }
+  .masterDetail {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+}
+@container workspace (max-width:680px) {
+  .masterDetail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .masterPane,
+  .timelinePane {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid var(--ft-color-border-default);
+  }
+  .formGrid,
+  .periodFields,
+  .propertiesGrid,
+  .batchFilters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .participantField {
+    grid-column: auto;
+  }
+  .participantField > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .relationEditor,
+  .etymologyEditor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .relationList > div {
+    grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr) auto;
+  }
+  .relationshipEditor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .batchTable > div {
+    min-width: 600px;
+  }
+}
+.borrowingFlow {
+  display: grid;
+  gap: 9px;
+  margin: 0 12px;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+}
+.borrowingFlow > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.borrowingFlow > header span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+.borrowingFlow > .field,
+.borrowingFlow > button {
+  margin: 0;
+}
+.profileToolbar {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-subtle);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+}
+.profilePickerRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.profilePickerRow > label {
+  display: grid;
+  gap: 4px;
+}
+.profilePickerRow > label > span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}
+
+.lexurgyOptions {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.lexurgyOptions > summary {
+  min-height: 36px;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.lexurgyFields {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 10px 12px;
+  padding: 0 12px 12px;
+}
+
+.chainPreview,
+.inlineError {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+
+.chainPreview {
+  color: var(--text-secondary);
+}
+
+.inlineError {
+  color: var(--ft-color-danger);
+}
+.profileToolbar select {
+  height: 32px;
+}
+.profileToolbar > details {
+  min-width: 0;
+}
+.profileToolbar summary {
+  cursor: pointer;
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.profileEditor {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 140px;
+  gap: 10px 12px;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid var(--ft-color-border-subtle);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+}
+.profileEditor textarea {
+  min-height: 88px;
+}
+.mappingField,
+.profileActions {
+  grid-column: 1 / -1;
+}
+.profileActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.profileDefault {
+  display: flex !important;
+  align-items: center;
+  gap: 6px !important;
+  min-width: 220px !important;
+  font-size: 12px;
+}
+.borrowingError {
+  padding: 9px 10px;
+  border-left: 3px solid var(--ft-color-danger);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-primary);
+  font-size: 12px;
+}
+.borrowingBlocker {
+  padding: 7px 10px;
+  border-left: 3px solid var(--ft-color-warning);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+@container workspace (max-width: 620px) {
+  .profilePickerRow,
+  .profileEditor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mappingField,
+  .profileActions {
+    grid-column: auto;
+  }
+  .profileActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+.borrowingCandidates {
+  display: grid;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+}
+.aiBorrowingAdjustments {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.aiBorrowingAdjustments summary {
+  cursor: pointer;
+  color: var(--ft-color-accent-text);
+  font-weight: 600;
+}
+.aiBorrowingAdjustments p {
+  margin: 6px 0;
+}
+.aiBorrowingAdjustments ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+.aiBorrowingStatus {
+  color: var(--ft-color-accent-text);
+  font-weight: 600;
+}
+.borrowingCandidates > div {
+  display: grid;
+  min-width: 1000px;
+  min-height: 46px;
+  grid-template-columns: 40px 96px minmax(138px, 1.2fr) minmax(148px, 1.25fr) 52px minmax(112px, 1fr) 68px 76px 58px 68px;
+  align-items: center;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  font-size: 12px;
+}
+.borrowingCandidates > div > * {
+  min-width: 0;
+  margin: 0 6px;
+}
+.borrowingCandidates > div > span {
+  display: grid;
+  gap: 2px;
+}
+.borrowingCandidates label {
+  display: grid;
+  gap: 2px;
+}
+.borrowingCandidates input:not([type="checkbox"]) {
+  height: 27px;
+  padding: 0 6px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-primary);
+  font: inherit;
+}
+.borrowingCandidates small {
+  color: var(--ft-color-text-secondary);
+  font-size: 10px;
+}
+.borrowingCandidates details summary {
+  cursor: pointer;
+  color: var(--ft-color-accent-text);
+}
+.borrowingCandidates pre {
+  max-width: 320px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 10px;
+}
+.borrowingHead {
+  min-height: 30px !important;
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 11px !important;
+}
+.borrowingCandidates footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 8px;
+}
+.borrowingCandidates footer span {
+  color: var(--ft-color-text-secondary);
+  font-size: 11px;
+}

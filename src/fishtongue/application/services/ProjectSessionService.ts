@@ -188,6 +188,18 @@ export default class ProjectSessionService implements ProjectApplication {
     });
   }
 
+  async saveLanguageProfile(id: string, profile: NonNullable<Language["profile"]>): Promise<void> {
+    const current = this.requireSnapshot();
+    const updatedAt = new Date().toISOString();
+    await this.languages.updateProfile(id, profile, updatedAt);
+    await this.changed({
+      ...current,
+      languages: current.languages.map((language) =>
+        language.id === id ? { ...language, profile, updatedAt } : language
+      ),
+    });
+  }
+
   async deleteLanguage(id: string): Promise<void> {
     const current = this.requireSnapshot();
     await this.languages.delete(id);

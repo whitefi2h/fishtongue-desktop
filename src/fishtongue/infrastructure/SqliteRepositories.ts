@@ -21,7 +21,7 @@ type ProjectRow = {
   created_at: string;
   updated_at: string;
 };
-type LanguageRow = ProjectRow & { project_id: string };
+type LanguageRow = ProjectRow & { project_id: string; profile_json: string };
 type LexemeRow = {
   id: string;
   language_id: string;
@@ -97,7 +97,7 @@ export class SqliteLanguageRepository implements LanguageRepository {
 
   async list(projectId: string): Promise<Language[]> {
     const rows = await this.database.select<LanguageRow>(
-      `SELECT id, project_id, name, created_at, updated_at
+      `SELECT id, project_id, name, profile_json, created_at, updated_at
        FROM languages WHERE project_id = $1 ORDER BY created_at, name`,
       [projectId]
     );
@@ -105,6 +105,7 @@ export class SqliteLanguageRepository implements LanguageRepository {
       id: row.id,
       projectId: row.project_id,
       name: row.name,
+      profile: parseLanguageProfile(row.profile_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -112,12 +113,13 @@ export class SqliteLanguageRepository implements LanguageRepository {
 
   async create(language: Language): Promise<void> {
     await this.database.execute(
-      `INSERT INTO languages (id, project_id, name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO languages (id, project_id, name, profile_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         language.id,
         language.projectId,
         language.name,
+        JSON.stringify(language.profile ?? emptyLanguageProfile()),
         language.createdAt,
         language.updatedAt,
       ]
@@ -131,8 +133,32 @@ export class SqliteLanguageRepository implements LanguageRepository {
     );
   }
 
+  async updateProfile(id: string, profile: NonNullable<Language["profile"]>, updatedAt: string): Promise<void> {
+    await this.database.execute(
+      "UPDATE languages SET profile_json = $1, updated_at = $2 WHERE id = $3",
+      [JSON.stringify(profile), updatedAt, id]
+    );
+  }
+
   async delete(id: string): Promise<void> {
     await this.database.execute("DELETE FROM languages WHERE id = $1", [id]);
+  }
+}
+
+function emptyLanguageProfile(): NonNullable<Language["profile"]> {
+  return {
+    nativeName: "", code: "", aliases: "", description: "", tags: "", status: "",
+    speakers: "", population: "", region: "", startLabel: "", endLabel: "",
+    socialStatus: "", officialStatus: "", currentWritingSystem: "",
+    historicalWritingSystems: "", orthographies: "", notes: "",
+  };
+}
+
+function parseLanguageProfile(value: string): NonNullable<Language["profile"]> {
+  try {
+    return { ...emptyLanguageProfile(), ...(JSON.parse(value) as Partial<NonNullable<Language["profile"]>>) };
+  } catch {
+    return emptyLanguageProfile();
   }
 }
 

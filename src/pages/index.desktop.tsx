@@ -24,6 +24,7 @@ export default function FishTongueDesktop() {
       wordGenerationService={wordGenerationService}
       aiApplication={applications.ai}
       historyApplication={applications.history}
+      phase6Application={applications.phase6}
     />
   );
 }

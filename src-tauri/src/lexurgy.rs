@@ -300,10 +300,7 @@ fn start_engine_process(app: &AppHandle) -> Result<EngineProcess, LexurgyCommand
         command.creation_flags(0x08000000);
     }
     let mut child = command.spawn().map_err(|error| {
-        LexurgyCommandError::new(
-            "START_FAILED",
-            format!("无法启动 Lexurgy：{error}"),
-        )
+        LexurgyCommandError::new("START_FAILED", format!("无法启动 Lexurgy：{error}"))
     })?;
 
     if let Some(stderr) = child.stderr.take() {
@@ -327,9 +324,7 @@ fn start_engine_process(app: &AppHandle) -> Result<EngineProcess, LexurgyCommand
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut line = String::new();
-        let result = BufReader::new(stdout)
-            .read_line(&mut line)
-            .map(|_| line);
+        let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
         let _ = sender.send(result);
     });
     let line = match receiver.recv_timeout(START_TIMEOUT) {
@@ -497,9 +492,9 @@ fn send_json(
 
 fn response_json(response: Response) -> Result<Value, LexurgyCommandError> {
     let status = response.status();
-    let body = response.text().map_err(|_| {
-        LexurgyCommandError::new("SIDECAR_CRASHED", "Lexurgy 返回内容无法读取。")
-    })?;
+    let body = response
+        .text()
+        .map_err(|_| LexurgyCommandError::new("SIDECAR_CRASHED", "Lexurgy 返回内容无法读取。"))?;
     serde_json::from_str(&body).map_err(|_| {
         let detail: String = body.trim().chars().take(200).collect();
         let message = if detail.is_empty() {
@@ -643,9 +638,7 @@ fn run_sound_change(
     if accepted {
         let job_url = result["url"]
             .as_str()
-            .ok_or_else(|| {
-                LexurgyCommandError::new("SIDECAR_CRASHED", "Lexurgy 未返回任务地址。")
-            })?
+            .ok_or_else(|| LexurgyCommandError::new("SIDECAR_CRASHED", "Lexurgy 未返回任务地址。"))?
             .to_string();
         supervisor
             .inner
@@ -672,16 +665,17 @@ fn run_sound_change(
                 return Err(LexurgyCommandError::new("CANCELLED", "任务已取消。"));
             }
             if Instant::now() >= deadline {
-                return Err(LexurgyCommandError::new("RUN_TIMEOUT", "Lexurgy 任务超时。"));
+                return Err(LexurgyCommandError::new(
+                    "RUN_TIMEOUT",
+                    "Lexurgy 任务超时。",
+                ));
             }
             thread::sleep(Duration::from_millis(100));
             let response = client
                 .get(absolute_job_url(&endpoint, &job_url))
                 .bearer_auth(&token)
                 .send()
-                .map_err(|error| {
-                    LexurgyCommandError::new("SIDECAR_CRASHED", error.to_string())
-                })?;
+                .map_err(|error| LexurgyCommandError::new("SIDECAR_CRASHED", error.to_string()))?;
             result = response_json(response)?;
             match result["status"].as_str() {
                 Some("working") => continue,
@@ -724,21 +718,13 @@ fn normalize_sound_change_result(mut result: Value) -> Value {
             "errors": []
         });
     };
-    fields
-        .entry("ruleNames")
-        .or_insert_with(|| json!([]));
-    fields
-        .entry("outputWords")
-        .or_insert_with(|| json!([]));
+    fields.entry("ruleNames").or_insert_with(|| json!([]));
+    fields.entry("outputWords").or_insert_with(|| json!([]));
     fields
         .entry("intermediateWords")
         .or_insert_with(|| json!({}));
-    fields
-        .entry("traces")
-        .or_insert_with(|| json!({}));
-    fields
-        .entry("errors")
-        .or_insert_with(|| json!([]));
+    fields.entry("traces").or_insert_with(|| json!({}));
+    fields.entry("errors").or_insert_with(|| json!([]));
     result
 }
 
@@ -756,9 +742,8 @@ pub fn lexurgy_inflect(
             &endpoint,
             &token,
             "/inflectv1",
-            &serde_json::to_value(input).map_err(|error| {
-                LexurgyCommandError::new("INVALID_REQUEST", error.to_string())
-            })?,
+            &serde_json::to_value(input)
+                .map_err(|error| LexurgyCommandError::new("INVALID_REQUEST", error.to_string()))?,
             RUN_TIMEOUT,
         )?;
         let success = response.status().is_success();
@@ -843,9 +828,7 @@ fn request_wordgen(
 }
 
 #[tauri::command]
-pub fn lexurgy_cancel(
-    supervisor: State<'_, LexurgySupervisor>,
-) -> Result<(), LexurgyCommandError> {
+pub fn lexurgy_cancel(supervisor: State<'_, LexurgySupervisor>) -> Result<(), LexurgyCommandError> {
     supervisor.cancel()
 }
 

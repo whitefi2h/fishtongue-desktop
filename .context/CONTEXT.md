@@ -1,10 +1,22 @@
 # FishTongue 开发上下文
 
-## Phase 5 实施边界
+## Phase 6 规划边界
+
+- Phase 5 已通过外部 Windows 人工验收；其 Schema v12、历史阶段、谱系、方言、事件、词源、语言接触和跨阶段演化能力作为只回归、不改写语义的基线。
+- Phase 6 升级到 Schema v14：v13 建立正式音系、音位表和分析批次，v14 补充 `borrowing_adaptation.suggest` AI 提案约束；历史阶段音系继续由 `StageStateResolver` 解析，`no_data` 阶段拒绝音系数据。
+- 借词工作区的未提交表单在当前应用会话内按“项目 + 当前语言”记忆；PanPhon 分析边界兼容拉丁小写 `g` 与 IPA 小写 `ɡ`，但正式词形和用户保存的 IPA 不做全局替换。
+- Analysis Sidecar 使用独立 Python/PyInstaller `onedir` 产物，由 Rust 以短命进程和 NDJSON 标准输入输出协议管理；React 不得直接访问进程或 Python。
+- PanPhon 只输出 IPA 特征与映射候选；FishTongue 确定性规则完成配列修复，LLM 仅作可选解释。借词候选必须经过持久化审核，不能自动修改词典、谱系、历史阶段或 Lexurgy 规则。
+- Morfessor、语素切分、音韵对应与逆向分析均已移出 Phase 6。
+- 详细实施顺序、验收门和风险见 `docs/phase-6-development-plan.md`。
+
+## Phase 5 已封存边界
 
 - Phase 4 已通过外部 Windows 人工验收并由 `phase-4.0.1` 标签封存。
-- Phase 5 使用 Schema v9；发布过的 v1～v8 迁移不可修改。v9 通过命令表把阶段主体和
-  阶段上下文合并为一次原子写入，并在新建阶段位置冲突时安全分配下一个位置。
+- Phase 5 使用 Schema v12；发布过的 v1～v11 迁移不可修改。v9 通过命令表把阶段主体和
+  阶段上下文合并为一次原子写入，并在新建阶段位置冲突时安全分配下一个位置；v10 修复
+  已记录 v9 但缺少写入对象的既有项目；v11 为词源关系增加可空的历史事件证据链接，v12 为语言增加完整基本属性 JSON。Rust 在每次项目数据库打开前显式执行迁移，不能
+  依赖 Tauri SQL 插件只在本次进程第一次加载固定数据库 URL 时消费的一次性迁移清单。
 - 每门语言由 v8 迁移或新语言触发器创建一个隐藏的 `internal_default` 状态。它是旧词典、
   语素、演化、屈折和造词配置的安全锚点，不可删除。
 - 历史阶段和轻量方言通过 `data_base_stage_id` 继承数据，通过
@@ -28,7 +40,7 @@ HistoryWorkspaces
 → HistoryApplicationService / StageStateResolver
 → Phase 5 Repository Ports
 → SQLite Adapters
-→ Schema v9
+→ Schema v12
 ```
 
 ## Phase 4 已封存边界

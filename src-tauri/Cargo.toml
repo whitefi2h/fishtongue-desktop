@@ -1,6 +1,6 @@
 [package]
 name = "fishtongue"
-version = "0.5.0-phase.5"
+version = "0.6.0-phase.6"
 description = "A local-first conlang creation desktop application"
 authors = ["FishTongue contributors"]
 license = "GPL-3.0-only"
@@ -36,7 +36,7 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 zeroize = "1"
 url = "2"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 
 [dev-dependencies]
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

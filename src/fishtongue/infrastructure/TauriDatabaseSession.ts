@@ -1,4 +1,5 @@
 import { DatabaseSessionPort } from "@/fishtongue/application/ports/ProjectPorts";
+import { invoke } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
 
 const ACTIVE_DATABASE_URL = "sqlite:active-project/project.db";
@@ -8,6 +9,7 @@ export default class TauriDatabaseSession implements DatabaseSessionPort {
 
   async open(): Promise<void> {
     await this.close();
+    await invoke<number>("migrate_active_project_database");
     this.database = await Database.load(ACTIVE_DATABASE_URL);
     await this.database.execute("PRAGMA foreign_keys = ON");
   }

@@ -24,6 +24,7 @@ const PRIVACY_CONSENT_VERSION = 1;
 const ALLOWED_KINDS = new Set<AiProposalKind>([
   "lexeme.upsert", "morpheme.upsert", "wordgen_profile.upsert",
   "evolution.update_draft", "inflection_system.update_draft",
+  "borrowing_adaptation.suggest",
 ]);
 
 export default class AiAssistantService implements AiApplication {
@@ -209,12 +210,18 @@ append one JSON block exactly as:
 Allowed kinds: lexeme.upsert, morpheme.upsert, wordgen_profile.upsert,
 evolution.update_draft, inflection_system.update_draft. Maximum 50. Never propose deletion,
 batch acceptance, execution, or project/language changes.
+For a borrowing batch, use borrowing_adaptation.suggest, never lexeme.upsert. Its patch is
+{"candidateRecommendations":[{"candidateId":"","action":"keep|reject|adjust","adaptedForm":"","adaptedIpa":"","explanation":""}],"temporaryRuleAdjustments":[]}.
+It may explain ambiguity or adjust the current draft only. It must not change source meaning or part of speech,
+claim that borrowing is derivation, create lexemes, or change a saved borrowing profile.
+For language-contact or etymology tasks, preserve the source meaning and part of speech unless the requested relation is explicitly derivation. Borrowing means phonological/orthographic adaptation into the target language; it is not morphological derivation. Calque means translating semantic or morphological structure; inheritance and cognate mean historical correspondence. If the user requests N contact proposals, return exactly N lexeme.upsert objects in source order.
 Use these patch shapes:
 lexeme: {"romanized":"","ipa":"","partOfSpeech":"","senses":[{"definition":""}]};
 morpheme: {"form":"","meaning":"","type":"root","compositionRule":{"mode":"none"}};
 wordgen: {"name":"","config":{"categories":[{"name":"C","symbols":[{"value":"p","weight":1}]}],"templates":[{"pattern":"{C}{V}","weight":1}],"syllableCounts":[{"count":2,"weight":1}],"forbiddenPatterns":[],"rewriteRules":[{"pattern":"","replacement":""}],"maxAttemptsPerCandidate":100}}. Use symbols/value, pattern and count exactly; do not use members, template, min or max;
 evolution: {"soundChanges":"Lexurgy rule text","testWords":[{"word":""}]};
 inflection: {"rules":{"type":"formula","formula":{"type":"concat","parts":[{"type":"stem"},{"type":"form","form":"n"}]}},"testCases":[{"stem":"","categories":{}}]}. Valid rule types are form, formula and split. Valid formula types are stem, form and concat. Do not use shorthand rule types such as prefix or suffix.
+borrowing suggestion: {"candidateRecommendations":[{"candidateId":"candidate UUID from context","action":"keep","explanation":"why"}],"temporaryRuleAdjustments":[]}.
 For evolution soundChanges, output valid Lexurgy syntax, not linguistic pseudocode:
 - Lexurgy keywords are lowercase and case-sensitive. Write "feature voiced", never "Feature voiced(+, -)".
 - Prefer explicit symbol mappings unless every feature, value and symbol matrix is fully declared.
@@ -281,9 +288,10 @@ async function parseResponse(
   conversation: AiConversationDetail
 ): Promise<{ content: string; proposals: Omit<AiProposal, "messageId" | "createdAt" | "updatedAt">[] }> {
   const match = raw.match(/```fishtongue-proposals\s*([\s\S]*?)```/i);
-  if (!match || !languageId) return { content: raw.trim(), proposals: [] };
+  const rawJson = match?.[1] ?? extractProposalArray(raw);
+  if (!rawJson || !languageId) return { content: raw.trim(), proposals: [] };
   let values: unknown;
-  try { values = JSON.parse(match[1]); } catch { return { content: raw.trim(), proposals: [] }; }
+  try { values = JSON.parse(rawJson); } catch { return { content: raw.trim(), proposals: [] }; }
   if (!Array.isArray(values)) return { content: raw.trim(), proposals: [] };
   const proposals = [];
   const proposalIssues: string[] = [];
@@ -322,13 +330,33 @@ async function parseResponse(
       proposalIssues.push(error instanceof Error ? error.message : String(error));
     }
   }
-  const content = raw.replace(match[0], "").trim();
+  const content = match ? raw.replace(match[0], "").trim() : "";
   return {
     content: proposalIssues.length
       ? `${content}\n\n${proposalIssues.length} 项提案因格式不符合 FishTongue 规则而未进入审核。`
       : content,
     proposals,
   };
+}
+
+function extractProposalArray(raw: string): string | undefined {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const candidates = [fenced, raw.trim()].filter(Boolean) as string[];
+  for (const candidate of candidates) {
+    const start = candidate.indexOf("[");
+    const end = candidate.lastIndexOf("]");
+    if (start < 0 || end <= start) continue;
+    const value = candidate.slice(start, end + 1);
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed) && parsed.some((item) =>
+        item && typeof item === "object" && "kind" in item
+      )) return value;
+    } catch {
+      // Keep searching; ordinary prose must never be treated as a proposal.
+    }
+  }
+  return undefined;
 }
 
 export async function proposalFingerprint(
@@ -339,6 +367,7 @@ export async function proposalFingerprint(
 }
 
 async function targetFor(project: ProjectApplication, kind: AiProposalKind, languageId: string, id?: string) {
+  if (kind === "borrowing_adaptation.suggest") return null;
   if (!id) return null;
   if (kind === "lexeme.upsert") return (await project.listLexemes(languageId)).find((item) => item.id === id) ?? null;
   if (kind === "morpheme.upsert") return (await project.listMorphemes(languageId)).find((item) => item.id === id) ?? null;

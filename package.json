@@ -1,6 +1,6 @@
 {
   "name": "fishtongue-desktop",
-  "version": "0.5.0-phase.5",
+  "version": "0.6.0-phase.6",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -31,6 +31,10 @@
     "audit:phase4-package": "node scripts/audit-phase4-package.mjs",
     "audit:phase5": "node scripts/audit-phase5.mjs",
     "audit:phase5-package": "node scripts/audit-phase5-package.mjs",
+    "audit:phase6": "node scripts/audit-phase6.mjs",
+    "audit:phase6-package": "node scripts/audit-phase6-package.mjs",
+    "test:analysis": "python -m unittest fishtongue-analysis/test_analysis_sidecar.py",
+    "build:analysis": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-phase6-analysis.ps1",
     "test:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-phase2-engine.ps1",
     "test:engine-contract": "node scripts/test-engine-contract.mjs",
     "verify:phase1": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase1 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run tauri:build",
@@ -38,7 +42,8 @@
     "verify:phase2": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase2 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase2-package",
     "verify:phase3": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase3 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase3-package",
     "verify:phase4": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase4 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase4-package",
-    "verify:phase5": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase5 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase5-package"
+    "verify:phase5": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run build:desktop && npm run audit:phase5 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run tauri:build && npm run audit:phase5-package",
+    "verify:phase6": "npm run test-ci -- --runInBand && npm run cypress-unit && npm run test:analysis && npm run build:desktop && npm run audit:phase6 && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml && npm run test:engine && npm run test:engine-contract && npm run build:analysis && npm run tauri:build && npm run audit:phase6-package"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.15.0",

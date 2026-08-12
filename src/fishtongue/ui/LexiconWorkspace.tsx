@@ -1,6 +1,7 @@
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
-import { Lexeme, Morpheme } from "@/fishtongue/domain/models";
+import { EtymologyRelation, Language, Lexeme, Morpheme } from "@/fishtongue/domain/models";
 import styles from "@/fishtongue/ui/FishTongueDesktopApp.module.css";
 import {
   Cross2Icon,
@@ -24,6 +25,15 @@ interface LexemeDraft {
   morphemes: string[];
 }
 
+interface LexemeTrace {
+  id: string;
+  relation: EtymologyRelation["kind"];
+  direction: "source" | "target";
+  label: string;
+  languageName: string;
+  lexeme?: Lexeme;
+}
+
 const emptyDraft: LexemeDraft = {
   romanized: "",
   ipa: "",
@@ -44,6 +54,11 @@ export default function LexiconWorkspace({
   aiDraft,
   onAiDraftConsumed,
   refreshRequest = 0,
+  historyApplication,
+  languages = [],
+  stageId,
+  focusRequest,
+  onOpenRelatedLexeme,
 }: {
   application: ProjectApplication;
   languageId: string;
@@ -53,6 +68,15 @@ export default function LexiconWorkspace({
   aiDraft?: AiProposalDraft;
   onAiDraftConsumed?: (requestId: string) => void;
   refreshRequest?: number;
+  historyApplication?: Phase5Application;
+  languages?: Language[];
+  stageId?: string;
+  focusRequest?: { lexemeId: string; requestId: string };
+  onOpenRelatedLexeme?: (
+    languageId: string,
+    lexemeId: string,
+    originLexemeId: string
+  ) => void;
 }) {
   const [lexemes, setLexemes] = useState<Lexeme[]>([]);
   const [morphemeLibrary, setMorphemeLibrary] = useState<Morpheme[]>([]);
@@ -65,7 +89,10 @@ export default function LexiconWorkspace({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const [stageView, setStageView] = useState<string>();
+  const [traces, setTraces] = useState<LexemeTrace[]>([]);
   const handledRefreshRequest = useRef(0);
+  const stageReadOnlyRef = useRef(false);
 
   const selectLexeme = useCallback((lexeme: Lexeme) => {
     setSelectedId(lexeme.id);
@@ -92,20 +119,37 @@ export default function LexiconWorkspace({
   }, []);
 
   const startCreating = useCallback(() => {
+    if (stageReadOnlyRef.current) {
+      onStatus("当前显示的是历史阶段解析结果；请切换到默认状态后新建词条。");
+      return;
+    }
     setSelectedId(undefined);
     setDraft(emptyDraft);
     setMorphemeSearch("");
     setMorphemePickerOpen(false);
     setError(undefined);
-  }, []);
+  }, [onStatus]);
 
   const reload = useCallback(async (preferredId?: string) => {
     setLoading(true);
     try {
-      const [next, nextMorphemes] = await Promise.all([
+      let [next, nextMorphemes] = await Promise.all([
         application.listLexemes(languageId),
         application.listMorphemes(languageId),
       ]);
+      if (historyApplication && stageId) {
+        const resolved = await historyApplication.resolveStage(stageId);
+        const isStageView = resolved.stage.kind !== "internal_default";
+        stageReadOnlyRef.current = isStageView;
+        setStageView(isStageView ? resolved.stage.name : undefined);
+        if (isStageView) {
+          next = Object.values(resolved.components.lexicon) as unknown as Lexeme[];
+          nextMorphemes = Object.values(resolved.components.morphemes) as unknown as Morpheme[];
+        }
+      } else {
+        stageReadOnlyRef.current = false;
+        setStageView(undefined);
+      }
       setLexemes(next);
       setMorphemeLibrary(nextMorphemes);
       const preferred = next.find((lexeme) => lexeme.id === preferredId);
@@ -122,11 +166,11 @@ export default function LexiconWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [application, languageId, selectLexeme, startCreating]);
+  }, [application, historyApplication, languageId, selectLexeme, stageId, startCreating]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void reload(focusRequest?.lexemeId);
+  }, [focusRequest, reload]);
 
   useEffect(() => {
     if (refreshRequest <= handledRefreshRequest.current) return;
@@ -137,6 +181,65 @@ export default function LexiconWorkspace({
   useEffect(() => {
     if (createRequest > 0) startCreating();
   }, [createRequest, startCreating]);
+
+  useEffect(() => {
+    if (!selectedId || !historyApplication || stageView) {
+      setTraces([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      historyApplication.listEtymologyForLexeme(selectedId),
+      Promise.all(languages.map(async (language) => ({
+        language,
+        lexemes: await application.listLexemes(language.id),
+      }))),
+      application.listGenerationBatches(languageId),
+    ]).then(([relations, groups, batches]) => {
+      if (cancelled) return;
+      const entries = groups.flatMap(({ language, lexemes: values }) =>
+        values.map((lexeme) => ({ language, lexeme }))
+      );
+      const byId = new Map(entries.map((entry) => [entry.lexeme.id, entry]));
+      const values: LexemeTrace[] = relations.map((relation) => {
+        const direction = relation.targetLexemeId === selectedId ? "target" : "source";
+        const otherId = direction === "target" ? relation.sourceLexemeId : relation.targetLexemeId;
+        const other = otherId ? byId.get(otherId) : undefined;
+        return {
+          id: relation.id,
+          relation: relation.kind,
+          direction,
+          label: other?.lexeme.romanized || relation.sourceForm || "未知形式",
+          languageName: other?.language.name || "项目外来源",
+          lexeme: other?.lexeme,
+        };
+      });
+      for (const batch of batches) {
+        if (batch.type !== "derivation" || batch.status !== "committed") continue;
+        for (const candidate of batch.candidates) {
+          if (candidate.status !== "committed" || !candidate.committedLexemeId || !candidate.sourceLexemeId) continue;
+          const selectedIsTarget = candidate.committedLexemeId === selectedId;
+          const selectedIsSource = candidate.sourceLexemeId === selectedId;
+          if (!selectedIsTarget && !selectedIsSource) continue;
+          const otherId = selectedIsTarget ? candidate.sourceLexemeId : candidate.committedLexemeId;
+          if (values.some((value) => value.relation === "derivation" && value.lexeme?.id === otherId)) continue;
+          const other = byId.get(otherId);
+          values.push({
+            id: `generation:${candidate.id}`,
+            relation: "derivation",
+            direction: selectedIsTarget ? "target" : "source",
+            label: other?.lexeme.romanized ?? "关联词已删除",
+            languageName: other?.language.name ?? "当前语言",
+            lexeme: other?.lexeme,
+          });
+        }
+      }
+      setTraces(values);
+    }).catch(() => {
+      if (!cancelled) setTraces([]);
+    });
+    return () => { cancelled = true; };
+  }, [application, historyApplication, languageId, languages, selectedId, stageView, refreshRequest]);
 
   useEffect(() => {
     if (loading || !aiDraft || aiDraft.kind !== "lexeme.upsert") return;
@@ -193,6 +296,10 @@ export default function LexiconWorkspace({
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (stageReadOnlyRef.current) {
+      setError("历史阶段词典是继承与差异合并后的只读结果；请在默认状态编辑，或通过演化审核写入目标阶段。");
+      return;
+    }
     const definitions = draft.senses
       .split(/\r?\n/)
       .map((definition) => definition.trim())
@@ -242,6 +349,7 @@ export default function LexiconWorkspace({
   };
 
   const remove = async () => {
+    if (stageReadOnlyRef.current) return;
     if (!draft.id) return;
     setSaving(true);
     setError(undefined);
@@ -274,7 +382,7 @@ export default function LexiconWorkspace({
       </label>
       <div className={styles.filterGroup}>
         <strong>数据范围</strong>
-        <span>当前语言 · 正式项目</span>
+        <span>{stageView ? `${stageView} · 解析后的只读状态` : "当前语言 · 正式项目"}</span>
       </div>
       <div className={styles.filterGroup}>
         <strong>词义规则</strong>
@@ -285,7 +393,7 @@ export default function LexiconWorkspace({
     <section className={styles.lexemeList}>
       <div className={styles.paneHeader}>
         <strong>{lexemes.length} 个词条</strong>
-        <button data-create-lexeme onClick={startCreating}>
+        <button data-create-lexeme onClick={startCreating} disabled={Boolean(stageView)}>
           <PlusIcon aria-hidden="true" />新建词条
         </button>
       </div>
@@ -326,14 +434,14 @@ export default function LexiconWorkspace({
 
     <aside className={styles.lexemeDetail}>
       <div className={styles.paneHeader}>
-        <span><strong>{draft.id ? draft.romanized || "未命名词条" : "新建词条"}</strong><small>{draft.id ? "编辑正式项目数据" : "至少填写一个词义"}</small></span>
+        <span><strong>{draft.id ? draft.romanized || "未命名词条" : "新建词条"}</strong><small>{stageView ? `${stageView} · 只读` : draft.id ? "编辑正式项目数据" : "至少填写一个词义"}</small></span>
         <span className={styles.lexemeHeaderActions}>
           <button aria-label="更多词条操作" disabled><DotsHorizontalIcon aria-hidden="true" /></button>
-          <button className={styles.primaryButton} type="submit" form="lexeme-editor-form" disabled={saving}>{saving ? "保存中…" : "保存"}</button>
+          <button className={styles.primaryButton} type="submit" form="lexeme-editor-form" disabled={saving || Boolean(stageView)}>{saving ? "保存中…" : "保存"}</button>
         </span>
       </div>
       <form id="lexeme-editor-form" className={styles.lexemeForm} onSubmit={(event) => void save(event)}>
-        <div className={styles.lexemeFormFields}>
+        <fieldset className={styles.lexemeFormFields} disabled={Boolean(stageView)}>
         <label><span>词形</span><input name="lexeme-romanized" autoComplete="off" value={draft.romanized} onChange={(event) => setDraft((value) => ({ ...value, romanized: event.target.value }))} /></label>
         <label><span>IPA</span><input name="lexeme-ipa" autoComplete="off" value={draft.ipa} onChange={(event) => setDraft((value) => ({ ...value, ipa: event.target.value }))} placeholder="/a.ka/" /></label>
         <label><span>词性</span><input name="lexeme-part-of-speech" autoComplete="off" value={draft.partOfSpeech} onChange={(event) => setDraft((value) => ({ ...value, partOfSpeech: event.target.value }))} /></label>
@@ -419,12 +527,37 @@ export default function LexiconWorkspace({
             </div>
           </div>}
         </fieldset>
+        {draft.id && <fieldset className={styles.compactPickerFieldset}>
+          <legend>词源与关联</legend>
+          {traces.length ? <div className={styles.lexemeRelations}>{traces.map((trace) => <button
+            type="button"
+            key={trace.id}
+            disabled={!trace.lexeme}
+            onClick={() => {
+              if (!trace.lexeme) return;
+              if (trace.lexeme.languageId === languageId) {
+                selectLexeme(trace.lexeme);
+                return;
+              }
+              const originLexemeId = selectedId ?? draft.id;
+              if (!originLexemeId) return;
+              onOpenRelatedLexeme?.(
+                trace.lexeme.languageId,
+                trace.lexeme.id,
+                originLexemeId
+              );
+            }}
+          >
+            <span><strong>{traceDirectionLabel(trace.relation, trace.direction)}</strong><small>{trace.languageName}</small></span>
+            <span>{trace.label}</span>
+          </button>)}</div> : <p className={styles.fieldHint}>尚无词源或派生关联</p>}
+        </fieldset>}
         {error && <p className={styles.lexemeError} role="alert">{error}</p>}
-        </div>
+        </fieldset>
         <div className={styles.lexemeFormActions}>
-          <button type="button" onClick={startCreating}>清空</button>
-          {draft.id && <button type="button" onClick={() => void remove()} disabled={saving}>删除</button>}
-          <button className={styles.primaryButton} type="submit" disabled={saving}>{saving ? "保存中…" : "保存词条"}</button>
+          <button type="button" onClick={startCreating} disabled={Boolean(stageView)}>清空</button>
+          {draft.id && <button type="button" onClick={() => void remove()} disabled={saving || Boolean(stageView)}>删除</button>}
+          <button className={styles.primaryButton} type="submit" disabled={saving || Boolean(stageView)}>{saving ? "保存中…" : "保存词条"}</button>
         </div>
       </form>
     </aside>
@@ -440,4 +573,16 @@ function move<T>(values: T[], from: number, to: number): T[] {
   const [value] = next.splice(from, 1);
   next.splice(to, 0, value);
   return next;
+}
+
+function traceDirectionLabel(kind: EtymologyRelation["kind"], direction: "source" | "target"): string {
+  const labels: Record<EtymologyRelation["kind"], [string, string]> = {
+    inheritance: ["继承自", "延续为"],
+    borrowing: ["借入自", "借出至"],
+    cognate: ["同源于", "同源于"],
+    derivation: ["派生自", "派生出"],
+    calque: ["仿译自", "被仿译为"],
+    unknown: ["关联自", "关联到"],
+  };
+  return labels[kind][direction === "target" ? 0 : 1];
 }

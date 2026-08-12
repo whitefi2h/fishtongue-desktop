@@ -369,6 +369,7 @@ type EtymologyRow = {
   target_lexeme_id: string;
   source_stage_id: string | null;
   target_stage_id: string | null;
+  historical_event_id: string | null;
   kind: EtymologyRelation["kind"];
   source_form: string;
   confidence: EtymologyRelation["confidence"];
@@ -401,8 +402,8 @@ export class SqliteEtymologyRepository implements EtymologyRepository {
       `INSERT INTO etymology_relations (
          id, project_id, source_lexeme_id, target_lexeme_id,
          source_stage_id, target_stage_id, kind, source_form, confidence,
-         notes, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         notes, created_at, updated_at, historical_event_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT(id) DO UPDATE SET
          source_lexeme_id=excluded.source_lexeme_id,
          target_lexeme_id=excluded.target_lexeme_id,
@@ -410,12 +411,14 @@ export class SqliteEtymologyRepository implements EtymologyRepository {
          target_stage_id=excluded.target_stage_id,
          kind=excluded.kind, source_form=excluded.source_form,
          confidence=excluded.confidence, notes=excluded.notes,
-         updated_at=excluded.updated_at`,
+         updated_at=excluded.updated_at,
+         historical_event_id=excluded.historical_event_id`,
       [
         value.id, value.projectId, value.sourceLexemeId ?? null,
         value.targetLexemeId, value.sourceStageId ?? null,
         value.targetStageId ?? null, value.kind, value.sourceForm,
         value.confidence, value.notes, value.createdAt, value.updatedAt,
+        value.historicalEventId ?? null,
       ]
     );
   }
@@ -436,6 +439,7 @@ export class SqliteEtymologyRepository implements EtymologyRepository {
       targetLexemeId: row.target_lexeme_id,
       sourceStageId: row.source_stage_id ?? undefined,
       targetStageId: row.target_stage_id ?? undefined,
+      historicalEventId: row.historical_event_id ?? undefined,
       kind: row.kind,
       sourceForm: row.source_form,
       confidence: row.confidence,

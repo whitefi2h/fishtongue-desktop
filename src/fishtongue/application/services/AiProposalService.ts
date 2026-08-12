@@ -51,6 +51,19 @@ export default class AiProposalService {
         throw new Error(`Lexurgy 校验未通过：${location}，${issue.message}`);
       }
     }
+    if (proposal.kind === "borrowing_adaptation.suggest") {
+      const recommendations = patch.candidateRecommendations;
+      if (!Array.isArray(recommendations) || recommendations.length === 0) {
+        throw new Error("借词建议至少需要一项候选建议。");
+      }
+      for (const value of recommendations) {
+        if (!value || typeof value !== "object") throw new Error("借词候选建议结构无效。");
+        const item = value as Record<string, unknown>;
+        if (typeof item.candidateId !== "string" || !["keep", "reject", "adjust"].includes(String(item.action))) {
+          throw new Error("借词候选建议缺少候选 ID 或使用了无效操作。");
+        }
+      }
+    }
     await this.repository.updateProposal({
       ...proposal,
       patch,
@@ -154,7 +167,10 @@ export default class AiProposalService {
           ...value, id, languageId: proposal.languageId, updatedAt: now,
           testCases: Array.isArray(value.testCases) ? value.testCases : [],
         });
+        return;
       }
+      case "borrowing_adaptation.suggest":
+        throw new Error("借词建议只能填入当前审核批次，不能直接写入项目。");
     }
   }
 
@@ -174,6 +190,8 @@ export default class AiProposalService {
         return this.project.getEvolution(proposal.languageId);
       case "inflection_system.update_draft":
         return this.project.getInflectionSystem(proposal.languageId);
+      case "borrowing_adaptation.suggest":
+        return null;
     }
   }
 
@@ -200,6 +218,14 @@ export function normalizeProposalPatch(
 ): Record<string, unknown> {
   const nested = objectValue(patch.draft);
   const source = nested ? { ...patch, ...nested } : patch;
+  if (kind === "borrowing_adaptation.suggest") {
+    const recommendations = arrayValue(source.candidateRecommendations);
+    if (!recommendations.length) throw new Error("借词建议缺少 candidateRecommendations。");
+    return {
+      candidateRecommendations: recommendations,
+      temporaryRuleAdjustments: arrayValue(source.temporaryRuleAdjustments),
+    };
+  }
   if (kind === "lexeme.upsert") {
     const meanings = arrayValue(source.senses).length
       ? arrayValue(source.senses)
