@@ -1,4 +1,10 @@
-import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
+import {
+  BorrowingDuplicateInput,
+  EtymologyDeletionMode,
+  EtymologyDuplicateCheck,
+  Phase5Application,
+  SaveEtymologyOptions,
+} from "@/fishtongue/application/ports/Phase5Application";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
 import {
   EtymologyRepository,
@@ -176,7 +182,61 @@ export default class HistoryApplicationService implements Phase5Application {
     return this.etymology.listForLexeme(lexemeId);
   }
 
-  async saveEtymologyRelation(value: EtymologyRelation): Promise<void> {
+  async checkEtymologyDuplicate(
+    value: EtymologyRelation
+  ): Promise<EtymologyDuplicateCheck> {
+    if (value.kind !== "borrowing") return { kind: "none" };
+    const lexemes = await this.listProjectLexemes();
+    return this.checkBorrowingDuplicate({
+      sourceLexemeId: value.sourceLexemeId,
+      sourceForm: value.sourceForm,
+      targetForm:
+        lexemes.find((lexeme) => lexeme.id === value.targetLexemeId)
+          ?.romanized ?? "",
+      excludeRelationId: value.id,
+    });
+  }
+
+  async checkBorrowingDuplicate(
+    input: BorrowingDuplicateInput
+  ): Promise<EtymologyDuplicateCheck> {
+    const snapshot = this.requireProject();
+    const [relations, lexemes] = await Promise.all([
+      this.etymology.list(snapshot.project.id),
+      this.listProjectLexemes(),
+    ]);
+    const lexemesById = new Map(lexemes.map((lexeme) => [lexeme.id, lexeme]));
+    const duplicates = relations.filter(
+      (relation) =>
+        relation.id !== input.excludeRelationId &&
+        relation.kind === "borrowing" &&
+        hasSameBorrowingSource(relation, input)
+    );
+    if (!duplicates.length) return { kind: "none", targetForm: input.targetForm };
+
+    const exact = duplicates.find((relation) => {
+      const existingForm = lexemesById.get(relation.targetLexemeId)?.romanized;
+      return (
+        existingForm && sameWrittenForm(existingForm, input.targetForm)
+      );
+    });
+    const conflict = exact ?? duplicates[0];
+    return {
+      kind: exact
+        ? "same_source_same_target_form"
+        : "same_source_different_target",
+      conflictingRelationId: conflict.id,
+      conflictingTargetLexemeId: conflict.targetLexemeId,
+      conflictingTargetForm:
+        lexemesById.get(conflict.targetLexemeId)?.romanized ?? "",
+      targetForm: input.targetForm,
+    };
+  }
+
+  async saveEtymologyRelation(
+    value: EtymologyRelation,
+    options: SaveEtymologyOptions = {}
+  ): Promise<void> {
     const snapshot = this.requireProject();
     if (value.sourceLexemeId && value.sourceLexemeId === value.targetLexemeId) {
       throw new Error("来源词条和目标词条不能相同。");
@@ -200,6 +260,16 @@ export default class HistoryApplicationService implements Phase5Application {
         throw new Error("关联的历史事件不存在或已被删除。");
       }
     }
+    const duplicate = await this.checkEtymologyDuplicate(value);
+    if (duplicate.kind === "same_source_same_target_form") {
+      throw new Error("该来源词和借词词形已经存在，不能重复保存。");
+    }
+    if (
+      duplicate.kind === "same_source_different_target" &&
+      !options.confirmSameSource
+    ) {
+      throw new Error("该来源词已有其他借词词形，请确认后再保存。");
+    }
     await this.etymology.save({
       ...value,
       projectId: snapshot.project.id,
@@ -210,8 +280,22 @@ export default class HistoryApplicationService implements Phase5Application {
     await this.project.markProjectChanged();
   }
 
-  async deleteEtymologyRelation(id: string): Promise<void> {
-    this.requireProject();
+  async deleteEtymologyRelation(
+    id: string,
+    mode: EtymologyDeletionMode = "relation_only"
+  ): Promise<void> {
+    const snapshot = this.requireProject();
+    if (mode === "relation_and_target_lexeme") {
+      const relation = (await this.etymology.list(snapshot.project.id)).find(
+        (value) => value.id === id
+      );
+      if (!relation) return;
+      if (relation.kind !== "borrowing") {
+        throw new Error("只有借词关系可以同时删除对应借词词条。");
+      }
+      await this.project.deleteLexeme(relation.targetLexemeId);
+      return;
+    }
     await this.etymology.delete(id);
     await this.project.markProjectChanged();
   }
@@ -307,6 +391,37 @@ export default class HistoryApplicationService implements Phase5Application {
     if (!snapshot) throw new Error("当前没有打开的项目。");
     return snapshot;
   }
+
+  private async listProjectLexemes() {
+    const snapshot = this.requireProject();
+    return (
+      await Promise.all(
+        snapshot.languages.map((language) =>
+          this.project.listLexemes(language.id)
+        )
+      )
+    ).flat();
+  }
+}
+
+function hasSameBorrowingSource(
+  relation: EtymologyRelation,
+  input: BorrowingDuplicateInput
+): boolean {
+  if (relation.sourceLexemeId || input.sourceLexemeId) {
+    return Boolean(
+      relation.sourceLexemeId &&
+        input.sourceLexemeId &&
+        relation.sourceLexemeId === input.sourceLexemeId
+    );
+  }
+  return sameWrittenForm(relation.sourceForm, input.sourceForm);
+}
+
+function sameWrittenForm(left: string, right: string): boolean {
+  const normalize = (value: string) =>
+    value.trim().normalize("NFC").toLocaleLowerCase();
+  return Boolean(normalize(left)) && normalize(left) === normalize(right);
 }
 
 function assertStageLinks(value: LanguageStage, stages: LanguageStage[]): void {

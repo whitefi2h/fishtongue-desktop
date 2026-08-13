@@ -1300,7 +1300,10 @@
   display: grid;
   min-width: 1000px;
   min-height: 46px;
-  grid-template-columns: 40px 96px minmax(138px, 1.2fr) minmax(148px, 1.25fr) 52px minmax(112px, 1fr) 68px 76px 58px 68px;
+  grid-template-columns: 40px 96px minmax(138px, 1.2fr) minmax(148px, 1.25fr) 52px minmax(
+      112px,
+      1fr
+    ) 68px 76px 58px 68px;
   align-items: center;
   border-bottom: 1px solid var(--ft-color-border-subtle);
   font-size: 12px;
@@ -1357,4 +1360,184 @@
 .borrowingCandidates footer span {
   color: var(--ft-color-text-secondary);
   font-size: 11px;
+}
+
+.dialogOverlay {
+  position: fixed;
+  z-index: var(--ft-z-overlay);
+  inset: 0;
+  background: var(--ft-color-scrim);
+  opacity: 1;
+  transition: opacity var(--ft-motion-modal) var(--ft-ease-standard);
+}
+.confirmDialog {
+  position: fixed;
+  z-index: var(--ft-z-modal);
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 480px;
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 64px);
+  gap: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--ft-color-border-strong);
+  border-radius: var(--ft-radius-lg);
+  background: var(--ft-color-bg-workspace);
+  box-shadow: var(--ft-shadow-modal);
+  transform: translate(-50%, -50%) scale(1);
+  transition: transform var(--ft-motion-modal) var(--ft-ease-standard),
+    opacity var(--ft-motion-modal) var(--ft-ease-standard);
+}
+.confirmDialog h2 {
+  font-size: 16px;
+  line-height: 22px;
+}
+.confirmDialog > p {
+  color: var(--ft-color-text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+.duplicateComparison {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+}
+.duplicateComparison > * {
+  min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ft-color-border-subtle);
+  overflow-wrap: anywhere;
+}
+.duplicateComparison > :nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+.duplicateComparison span {
+  background: var(--ft-color-bg-subtle);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.warningNotice,
+.blockingNotice {
+  padding: 9px 10px;
+  border-left: 3px solid var(--ft-color-warning);
+  background: var(--ft-color-bg-subtle);
+}
+.blockingNotice {
+  border-left-color: var(--ft-color-danger);
+}
+.batchDuplicateList {
+  display: grid;
+  max-height: 240px;
+  gap: 6px;
+  overflow: auto;
+}
+.batchDuplicateList > label {
+  display: grid;
+  grid-template-columns: 18px minmax(90px, 0.7fr) minmax(0, 1.4fr) minmax(
+      0,
+      1fr
+    ) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-subtle);
+  cursor: pointer;
+}
+.batchDuplicateList > label[data-selected] {
+  border-color: var(--ft-color-accent);
+  background: var(--ft-color-accent-soft);
+}
+.batchDuplicateList > label[data-disabled] {
+  border-color: var(--ft-color-border-subtle);
+  background: var(--ft-color-bg-disabled);
+  color: var(--ft-color-text-disabled);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.batchDuplicateList input {
+  margin: 0;
+}
+.batchDuplicateList span,
+.batchDuplicateList small {
+  min-width: 0;
+  color: var(--ft-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.batchDuplicateList small {
+  color: var(--ft-color-warning);
+}
+.batchDuplicateList small[data-blocking] {
+  color: var(--ft-color-danger);
+}
+.batchDuplicateList > label[data-disabled] span,
+.batchDuplicateList > label[data-disabled] small {
+  color: var(--ft-color-text-disabled);
+}
+.deleteChoices {
+  display: grid;
+  gap: 8px;
+}
+.deleteChoices label {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-bg-subtle);
+  cursor: pointer;
+}
+.deleteChoices label[data-selected] {
+  border-color: var(--ft-color-accent);
+  background: var(--ft-color-accent-soft);
+}
+.deleteChoices input {
+  margin-top: 3px;
+}
+.deleteChoices span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.deleteChoices small {
+  color: var(--ft-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+}
+.dialogActions .dangerButton {
+  margin-right: 0;
+  border-color: var(--ft-color-danger);
+}
+.dialogActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+@starting-style {
+  .dialogOverlay {
+    opacity: 0;
+  }
+  .confirmDialog {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialogOverlay,
+  .confirmDialog {
+    transition-duration: 0ms;
+  }
 }

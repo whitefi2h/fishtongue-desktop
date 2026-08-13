@@ -1,6 +1,6 @@
 # FishTongue Desktop
 
-## Phase 6 开发状态（2026-08-09）
+## Phase 6 结项状态（2026-08-13）
 
 Phase 3 已通过干净 Windows 外部人工验收并正式结项。Phase 4 的 AI 数据模型位于
 Schema v6，人工验收修复迁移 v7 将单次回答的提案上限安全扩展到 50；它在既有扩展词条、独立词义、语素、造词配置、自定义概念表和候选审核批次
@@ -30,7 +30,7 @@ Phase 5 已通过外部 Windows 人工验收并正式结项。Schema v8 为每�
 背景、证据和来源合并为一次原子保存，并自动避开阶段顺序冲突；迁移 v10 修复已经记录 v9
 但未获得该写入对象的既有项目，并改为每次打开项目时显式执行迁移。
 
-Phase 6 正在建立正式音系与独立 PanPhon Analysis Sidecar，并把确定性、可选 LLM 和可选 Lexurgy 借词适配整合进“词源与接触”。Morfessor、自动语素切分、音韵对应和逆向重构不属于本阶段。详细实施与验收基线见
+Phase 6 已通过外部 Windows 人工验收并正式结项。本阶段交付了正式音系、独立 PanPhon Analysis Sidecar，以及整合进“词源与接触”的确定性、可选 LLM 和可选 Lexurgy 借词适配；单条和批量借词均执行重复检查，批量重复弹窗允许逐条选择不同词形并固定排除完全重复项。Morfessor、自动语素切分、音韵对应和逆向重构不属于本阶段。详细实施与回归基线见
 [`docs/phase-6-development-plan.md`](docs/phase-6-development-plan.md)。这些分析能力只产生候选或证据，不会自动重建祖语、修改谱系或绕过审核写入正式数据。
 当前 Schema v14 在 v13 正式音系与借词批次基础上补充 AI 借词建议提案兼容；借词工作区会在当前应用会话内记住未提交进度，IPA 分析兼容拉丁小写 `g` 和 IPA 小写 `ɡ`，同时保留用户原始输入。
 
@@ -40,11 +40,11 @@ Phase 6 正在建立正式音系与独立 PanPhon Analysis Sidecar，并把确�
 
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2、Phase 3、Phase 4 和 Phase 5 均已通过验收。Phase 2 已交付
+> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2、Phase 3、Phase 4、Phase 5 和 Phase 6 均已通过验收。Phase 2 已交付
 > Lexurgy Sidecar、音变预览、屈折预览和 Schema v2，并通过无系统 Java 的外部
 > Windows 验收。Phase 3 已交付正式词典、语素、确定性造词、候选审核、批量提交
 > 和安全撤销。Phase 4 已交付可选的多模型 AI 助手与安全提案系统。Phase 5 已交付
-> 真实历史阶段、谱系、方言、事件、词源、语言接触和跨阶段演化审核。Phase 6 当前处于开发完成、本机自动验收阶段；外部 Windows 验收前不标记结项。
+> 真实历史阶段、谱系、方言、事件、词源、语言接触和跨阶段演化审核。Phase 6 已于 2026-08-13 通过外部 Windows 人工验收并正式结项。
 > 其他设计原型入口不代表相应能力已经实现。
 
 ## 最终用户体验

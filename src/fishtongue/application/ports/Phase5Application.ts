@@ -11,6 +11,34 @@ import {
   StageEvolutionOperation,
 } from "@/fishtongue/domain/models";
 
+export type EtymologyDuplicateKind =
+  | "none"
+  | "same_source_different_target"
+  | "same_source_same_target_form";
+
+export interface EtymologyDuplicateCheck {
+  kind: EtymologyDuplicateKind;
+  conflictingRelationId?: string;
+  conflictingTargetLexemeId?: string;
+  conflictingTargetForm?: string;
+  targetForm?: string;
+}
+
+export interface BorrowingDuplicateInput {
+  sourceLexemeId?: string;
+  sourceForm: string;
+  targetForm: string;
+  excludeRelationId?: string;
+}
+
+export interface SaveEtymologyOptions {
+  confirmSameSource?: boolean;
+}
+
+export type EtymologyDeletionMode =
+  | "relation_only"
+  | "relation_and_target_lexeme";
+
 export interface Phase5Application {
   listStages(languageId: string): Promise<LanguageStage[]>;
   saveStage(stage: LanguageStage): Promise<void>;
@@ -35,8 +63,20 @@ export interface Phase5Application {
 
   listEtymologyRelations(): Promise<EtymologyRelation[]>;
   listEtymologyForLexeme(lexemeId: string): Promise<EtymologyRelation[]>;
-  saveEtymologyRelation(relation: EtymologyRelation): Promise<void>;
-  deleteEtymologyRelation(id: string): Promise<void>;
+  checkEtymologyDuplicate(
+    relation: EtymologyRelation
+  ): Promise<EtymologyDuplicateCheck>;
+  checkBorrowingDuplicate(
+    input: BorrowingDuplicateInput
+  ): Promise<EtymologyDuplicateCheck>;
+  saveEtymologyRelation(
+    relation: EtymologyRelation,
+    options?: SaveEtymologyOptions
+  ): Promise<void>;
+  deleteEtymologyRelation(
+    id: string,
+    mode?: EtymologyDeletionMode
+  ): Promise<void>;
 
   listStageEvolutionBatches(languageId: string): Promise<StageEvolutionBatch[]>;
   createStageEvolutionBatch(batch: StageEvolutionBatch): Promise<void>;

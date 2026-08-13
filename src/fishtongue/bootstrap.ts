@@ -140,7 +140,8 @@ export function createDesktopApplications(): {
       borrowingBatches,
       createDesktopSoundChangeService()
     ),
-    stageResolver
+    stageResolver,
+    history
   );
   return { project, ai, history, phase6 };
 }

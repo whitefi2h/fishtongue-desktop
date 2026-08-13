@@ -1107,6 +1107,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn etymology_deletion_can_keep_or_cascade_to_the_target_lexeme() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES (
+              'p', 'Contact project', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+            );
+            INSERT INTO languages (id, project_id, name, created_at, updated_at) VALUES
+              ('source-language', 'p', 'Source', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+              ('target-language', 'p', 'Target', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO lexemes (
+              id, language_id, romanized, part_of_speech, created_at, updated_at
+            ) VALUES
+              ('source', 'source-language', 'pata', 'noun', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+              ('keep-target', 'target-language', 'bada', 'noun', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+              ('delete-target', 'target-language', 'pada', 'noun', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            INSERT INTO etymology_relations (
+              id, project_id, source_lexeme_id, target_lexeme_id, kind,
+              source_form, confidence, notes, created_at, updated_at
+            ) VALUES
+              ('keep-relation', 'p', 'source', 'keep-target', 'borrowing', '', 'confirmed', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+              ('delete-relation', 'p', 'source', 'delete-target', 'borrowing', '', 'confirmed', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            DELETE FROM etymology_relations WHERE id = 'keep-relation';
+            DELETE FROM lexemes WHERE id = 'delete-target';
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .expect("delete borrowing relation and target lexeme safely");
+
+        let kept_target: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM lexemes WHERE id = 'keep-target'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap();
+        let deleted_relation: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM etymology_relations WHERE id = 'delete-relation'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let source: i64 = sqlx::query_scalar("SELECT count(*) FROM lexemes WHERE id = 'source'")
+            .fetch_one(&mut database)
+            .await
+            .unwrap();
+        assert_eq!(kept_target, 1);
+        assert_eq!(deleted_relation, 0);
+        assert_eq!(source, 1);
+    }
+
+    #[tokio::test]
     async fn schema_v12_persists_language_profile_without_changing_identity() {
         let mut database = migrated_database().await;
         sqlx::raw_sql(

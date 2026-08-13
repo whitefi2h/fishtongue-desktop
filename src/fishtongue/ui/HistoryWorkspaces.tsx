@@ -1,5 +1,12 @@
-import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
-import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
+import {
+  EtymologyDeletionMode,
+  EtymologyDuplicateCheck,
+  Phase5Application,
+} from "@/fishtongue/application/ports/Phase5Application";
+import {
+  BorrowingBatchDuplicateCheck,
+  Phase6Application,
+} from "@/fishtongue/application/ports/Phase6Application";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
 import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import {
@@ -17,6 +24,7 @@ import {
 } from "@/fishtongue/domain/models";
 import GenealogyCanvas from "@/fishtongue/ui/GenealogyCanvas";
 import styles from "@/fishtongue/ui/HistoryWorkspaces.module.css";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type CommonProps = {
@@ -1259,45 +1267,89 @@ export function EtymologyWorkspace(
   const [relations, setRelations] = useState<EtymologyRelation[]>([]);
   const [events, setEvents] = useState<HistoricalEvent[]>([]);
   const [lexemes, setLexemes] = useState<LexemeChoice[]>([]);
-  const [mode, setMode] = useState<"single" | "batch">(remembered?.mode ?? "single");
-  const [sourceLanguageId, setSourceLanguageId] = useState(remembered?.sourceLanguageId ?? "");
-  const [sourceSearch, setSourceSearch] = useState(remembered?.sourceSearch ?? "");
-  const [targetSearch, setTargetSearch] = useState(remembered?.targetSearch ?? "");
+  const [mode, setMode] = useState<"single" | "batch">(
+    remembered?.mode ?? "single"
+  );
+  const [sourceLanguageId, setSourceLanguageId] = useState(
+    remembered?.sourceLanguageId ?? ""
+  );
+  const [sourceSearch, setSourceSearch] = useState(
+    remembered?.sourceSearch ?? ""
+  );
+  const [targetSearch, setTargetSearch] = useState(
+    remembered?.targetSearch ?? ""
+  );
   const [sourceId, setSourceId] = useState(remembered?.sourceId ?? "");
   const [targetId, setTargetId] = useState(remembered?.targetId ?? "");
   const [sourceForm, setSourceForm] = useState(remembered?.sourceForm ?? "");
-  const [kind, setKind] = useState<EtymologyRelation["kind"]>(remembered?.kind ?? "borrowing");
+  const [kind, setKind] = useState<EtymologyRelation["kind"]>(
+    remembered?.kind ?? "borrowing"
+  );
   const [eventId, setEventId] = useState(remembered?.eventId ?? "");
-  const [confidenceValue, setConfidenceValue] =
-    useState<EtymologyRelation["confidence"]>(remembered?.confidenceValue ?? "confirmed");
+  const [confidenceValue, setConfidenceValue] = useState<
+    EtymologyRelation["confidence"]
+  >(remembered?.confidenceValue ?? "confirmed");
   const [notes, setNotes] = useState(remembered?.notes ?? "");
-  const [editing, setEditing] = useState<EtymologyRelation | undefined>(remembered?.editing);
-  const [createTarget, setCreateTarget] = useState(remembered?.createTarget ?? false);
+  const [editing, setEditing] = useState<EtymologyRelation | undefined>(
+    remembered?.editing
+  );
+  const [createTarget, setCreateTarget] = useState(
+    remembered?.createTarget ?? false
+  );
   const [targetForm, setTargetForm] = useState(remembered?.targetForm ?? "");
-  const [targetMeaning, setTargetMeaning] = useState(remembered?.targetMeaning ?? "");
-  const [targetPartOfSpeech, setTargetPartOfSpeech] = useState(remembered?.targetPartOfSpeech ?? "");
+  const [targetMeaning, setTargetMeaning] = useState(
+    remembered?.targetMeaning ?? ""
+  );
+  const [targetPartOfSpeech, setTargetPartOfSpeech] = useState(
+    remembered?.targetPartOfSpeech ?? ""
+  );
   const [batchSearch, setBatchSearch] = useState(remembered?.batchSearch ?? "");
-  const [batchPartOfSpeech, setBatchPartOfSpeech] = useState(remembered?.batchPartOfSpeech ?? "");
+  const [batchPartOfSpeech, setBatchPartOfSpeech] = useState(
+    remembered?.batchPartOfSpeech ?? ""
+  );
   const [batchSelected, setBatchSelected] = useState<Record<string, boolean>>(
     remembered?.batchSelected ?? {}
   );
   const [batchDrafts, setBatchDrafts] = useState<
     Record<string, { form: string; meaning: string }>
   >(remembered?.batchDrafts ?? {});
-  const [borrowingBatch, setBorrowingBatch] = useState<BorrowingBatch | undefined>(remembered?.borrowingBatch);
+  const [borrowingBatch, setBorrowingBatch] = useState<
+    BorrowingBatch | undefined
+  >(remembered?.borrowingBatch);
   const [borrowingProfiles, setBorrowingProfiles] = useState<
     BorrowingProfile[]
   >([]);
-  const [borrowingProfileId, setBorrowingProfileId] = useState(remembered?.borrowingProfileId ?? "");
-  const [targetStages, setTargetStages] = useState<LanguageStage[]>([]);
-  const [lexurgyStartStageId, setLexurgyStartStageId] = useState(remembered?.lexurgyStartStageId ?? "");
-  const [lexurgyEndStageId, setLexurgyEndStageId] = useState(remembered?.lexurgyEndStageId ?? "");
-  const [temporaryIpa, setTemporaryIpa] = useState(remembered?.temporaryIpa ?? "");
-  const [aiBorrowingAdjustments, setAiBorrowingAdjustments] = useState<string[]>(
-    remembered?.aiBorrowingAdjustments ?? []
+  const [borrowingProfileId, setBorrowingProfileId] = useState(
+    remembered?.borrowingProfileId ?? ""
   );
+  const [targetStages, setTargetStages] = useState<LanguageStage[]>([]);
+  const [lexurgyStartStageId, setLexurgyStartStageId] = useState(
+    remembered?.lexurgyStartStageId ?? ""
+  );
+  const [lexurgyEndStageId, setLexurgyEndStageId] = useState(
+    remembered?.lexurgyEndStageId ?? ""
+  );
+  const [temporaryIpa, setTemporaryIpa] = useState(
+    remembered?.temporaryIpa ?? ""
+  );
+  const [aiBorrowingAdjustments, setAiBorrowingAdjustments] = useState<
+    string[]
+  >(remembered?.aiBorrowingAdjustments ?? []);
   const [borrowingBusy, setBorrowingBusy] = useState(false);
   const [borrowingError, setBorrowingError] = useState("");
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    relation: EtymologyRelation;
+    check: EtymologyDuplicateCheck;
+  }>();
+  const [batchDuplicatePrompt, setBatchDuplicatePrompt] = useState<{
+    batchId: string;
+    candidateIds: string[];
+    check: BorrowingBatchDuplicateCheck;
+  }>();
+  const [deletePrompt, setDeletePrompt] = useState<EtymologyRelation>();
+  const [deleteMode, setDeleteMode] =
+    useState<EtymologyDeletionMode>("relation_only");
+  const [modalBusy, setModalBusy] = useState(false);
   const pendingAiSourceIds = useRef<string[]>([]);
   const consumedAiRequest = useRef("");
   const { aiDrafts, onAiDraftsConsumed, onDraftChange, onStatus } = props;
@@ -1453,7 +1505,9 @@ export function EtymologyWorkspace(
               ? String(recommendation.adaptedIpa)
               : candidate.adaptedIpa,
           trace: [
-            ...candidate.trace.filter((step) => step.step !== "ai_recommendation"),
+            ...candidate.trace.filter(
+              (step) => step.step !== "ai_recommendation"
+            ),
             {
               step: "ai_recommendation",
               action,
@@ -1474,21 +1528,23 @@ export function EtymologyWorkspace(
         nextCandidates
           .filter((candidate) => byId.has(candidate.id))
           .map((candidate) => props.phase6!.saveBorrowingCandidate(candidate))
-      ).then(() => {
-        setBorrowingBatch({
-          ...borrowingBatch,
-          candidates: nextCandidates,
-          llmModelLabel: "AI 建议已应用到草稿",
+      )
+        .then(() => {
+          setBorrowingBatch({
+            ...borrowingBatch,
+            candidates: nextCandidates,
+            llmModelLabel: "AI 建议已应用到草稿",
+          });
+          setAiBorrowingAdjustments(temporaryAdjustments);
+          onStatus(
+            "AI 建议已应用到候选表；已自动勾选保留项并填入调整，尚未写入词典。"
+          );
+          onAiDraftsConsumed?.();
+        })
+        .catch((error) => {
+          consumedAiRequest.current = "";
+          onStatus(error instanceof Error ? error.message : String(error));
         });
-        setAiBorrowingAdjustments(temporaryAdjustments);
-        onStatus(
-          "AI 建议已应用到候选表；已自动勾选保留项并填入调整，尚未写入词典。"
-        );
-        onAiDraftsConsumed?.();
-      }).catch((error) => {
-        consumedAiRequest.current = "";
-        onStatus(error instanceof Error ? error.message : String(error));
-      });
       return;
     }
     const drafts =
@@ -1594,10 +1650,12 @@ export function EtymologyWorkspace(
     kind !== "borrowing"
       ? ""
       : !sourceId
-        ? "请选择来源词。"
-        : !selectedSourceLexeme?.ipa && !temporaryIpa.trim()
-          ? `来源词“${selectedSourceLexeme?.romanized ?? ""}”缺少 IPA，请填写临时来源 IPA。`
-          : lexurgySelection.error ?? "";
+      ? "请选择来源词。"
+      : !selectedSourceLexeme?.ipa && !temporaryIpa.trim()
+      ? `来源词“${
+          selectedSourceLexeme?.romanized ?? ""
+        }”缺少 IPA，请填写临时来源 IPA。`
+      : lexurgySelection.error ?? "";
   const selectedBatchSources = batchCandidates.filter(
     (value) => batchSelected[value.id]
   );
@@ -1608,13 +1666,15 @@ export function EtymologyWorkspace(
     kind !== "borrowing"
       ? ""
       : !selectedBatchSources.length
-        ? "请至少选择一个来源词。"
-        : batchSourcesMissingIpa.length
-          ? `所选来源词中有 ${batchSourcesMissingIpa.length} 条缺少 IPA：${batchSourcesMissingIpa
-              .slice(0, 5)
-              .map((value) => value.romanized)
-              .join("、")}${batchSourcesMissingIpa.length > 5 ? "等" : ""}。`
-          : lexurgySelection.error ?? "";
+      ? "请至少选择一个来源词。"
+      : batchSourcesMissingIpa.length
+      ? `所选来源词中有 ${
+          batchSourcesMissingIpa.length
+        } 条缺少 IPA：${batchSourcesMissingIpa
+          .slice(0, 5)
+          .map((value) => value.romanized)
+          .join("、")}${batchSourcesMissingIpa.length > 5 ? "等" : ""}。`
+      : lexurgySelection.error ?? "";
 
   const reset = () => {
     setEditing(undefined);
@@ -1709,12 +1769,33 @@ export function EtymologyWorkspace(
     );
   };
 
-  const commitBorrowing = async () => {
+  const commitBorrowing = async (
+    confirmSameSource = false,
+    candidateIds?: string[]
+  ) => {
     if (!props.phase6 || !borrowingBatch) return;
-    const accepted = borrowingBatch.candidates
-      .filter((value) => value.status === "accepted")
-      .map((value) => value.id);
-    await props.phase6.commitBorrowing(borrowingBatch.id, accepted);
+    const accepted =
+      candidateIds ??
+      borrowingBatch.candidates
+        .filter((value) => value.status === "accepted")
+        .map((value) => value.id);
+    if (!confirmSameSource) {
+      const duplicate = await props.phase6.checkBorrowingDuplicates(
+        borrowingBatch.id,
+        accepted
+      );
+      if (duplicate.kind !== "none") {
+        setBatchDuplicatePrompt({
+          batchId: borrowingBatch.id,
+          candidateIds: accepted,
+          check: duplicate,
+        });
+        return;
+      }
+    }
+    await props.phase6.commitBorrowing(borrowingBatch.id, accepted, {
+      confirmSameSource,
+    });
     await load();
     props.onChanged();
     reset();
@@ -1765,9 +1846,9 @@ export function EtymologyWorkspace(
     setTargetSearch("");
   };
 
-  const save = async () => {
+  const relationDraft = (): EtymologyRelation => {
     const now = new Date().toISOString();
-    await props.application.saveEtymologyRelation({
+    return {
       id: editing?.id ?? crypto.randomUUID(),
       projectId: "",
       sourceLexemeId: sourceId || undefined,
@@ -1779,11 +1860,63 @@ export function EtymologyWorkspace(
       notes,
       createdAt: editing?.createdAt ?? now,
       updatedAt: now,
+    };
+  };
+
+  const persistRelation = async (
+    relation: EtymologyRelation,
+    confirmSameSource = false
+  ) => {
+    await props.application.saveEtymologyRelation(relation, {
+      confirmSameSource,
     });
     reset();
     await load();
     props.onChanged();
     props.onStatus("词源关系已保存。");
+  };
+
+  const save = async () => {
+    const relation = relationDraft();
+    const duplicate = await props.application.checkEtymologyDuplicate(relation);
+    if (duplicate.kind !== "none") {
+      setDuplicatePrompt({ relation, check: duplicate });
+      return;
+    }
+    await persistRelation(relation);
+  };
+
+  const confirmDuplicate = async () => {
+    if (!duplicatePrompt) return;
+    setModalBusy(true);
+    try {
+      await persistRelation(duplicatePrompt.relation, true);
+      setDuplicatePrompt(undefined);
+    } finally {
+      setModalBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePrompt) return;
+    setModalBusy(true);
+    try {
+      await props.application.deleteEtymologyRelation(
+        deletePrompt.id,
+        deleteMode
+      );
+      await load();
+      props.onChanged();
+      props.onStatus(
+        deleteMode === "relation_and_target_lexeme"
+          ? "借词关系和对应词典词条已删除。"
+          : "借词关系已删除，词典词条保持不变。"
+      );
+      setDeletePrompt(undefined);
+      setDeleteMode("relation_only");
+    } finally {
+      setModalBusy(false);
+    }
   };
 
   const createCurrentLexeme = async () => {
@@ -1968,67 +2101,81 @@ export function EtymologyWorkspace(
         data-focus-borrowing={focusBorrowingBatch ? "true" : undefined}
       >
         {!focusBorrowingBatch && (
-        <section className={styles.compactSection}>
-          <header>
-            <strong>已记录关系</strong>
-            <span>{currentRelations.length} 条</span>
-          </header>
-          {currentRelations.length ? (
-            <div className={styles.etymologyList}>
-              {currentRelations.map((relation) => (
-                <div
-                  key={relation.id}
-                  data-active={editing?.id === relation.id}
-                >
-                  <span>
-                    <strong>
-                      {relation.sourceLexemeId
-                        ? labels.get(relation.sourceLexemeId)
-                        : relation.sourceForm || "未知来源"}
-                    </strong>
-                    <small>
-                      {relation.historicalEventId
-                        ? eventNames.get(relation.historicalEventId)
-                        : "未关联事件"}
-                    </small>
-                  </span>
-                  <b>{etymologyKind(relation.kind)}</b>
-                  <span>
-                    <strong>
-                      {labels.get(relation.targetLexemeId) ?? "词条已删除"}
-                    </strong>
-                    <small>{confidence(relation.confidence)}</small>
-                  </span>
-                  <span className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => beginEdit(relation)}
-                    >
-                      编辑
-                    </button>
-                    <ConfirmDeleteButton
-                      className={styles.iconDanger}
-                      label="删除词源关系"
-                      onConfirm={() =>
-                        void props.application
-                          .deleteEtymologyRelation(relation.id)
-                          .then(load)
-                          .then(props.onChanged)
-                          .catch(report(props.onStatus))
-                      }
-                    />
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="尚未建立关系"
-              body="可在右侧创建当前语言的词源或接触关系。"
-            />
-          )}
-        </section>
+          <section className={styles.compactSection}>
+            <header>
+              <strong>已记录关系</strong>
+              <span>{currentRelations.length} 条</span>
+            </header>
+            {currentRelations.length ? (
+              <div className={styles.etymologyList}>
+                {currentRelations.map((relation) => (
+                  <div
+                    key={relation.id}
+                    data-active={editing?.id === relation.id}
+                  >
+                    <span>
+                      <strong>
+                        {relation.sourceLexemeId
+                          ? labels.get(relation.sourceLexemeId)
+                          : relation.sourceForm || "未知来源"}
+                      </strong>
+                      <small>
+                        {relation.historicalEventId
+                          ? eventNames.get(relation.historicalEventId)
+                          : "未关联事件"}
+                      </small>
+                    </span>
+                    <b>{etymologyKind(relation.kind)}</b>
+                    <span>
+                      <strong>
+                        {labels.get(relation.targetLexemeId) ?? "词条已删除"}
+                      </strong>
+                      <small>{confidence(relation.confidence)}</small>
+                    </span>
+                    <span className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => beginEdit(relation)}
+                      >
+                        编辑
+                      </button>
+                      {relation.kind === "borrowing" ? (
+                        <button
+                          type="button"
+                          className={styles.iconDanger}
+                          aria-label="删除借词"
+                          onClick={() => {
+                            setDeleteMode("relation_only");
+                            setDeletePrompt(relation);
+                          }}
+                        >
+                          删除
+                        </button>
+                      ) : (
+                        <ConfirmDeleteButton
+                          className={styles.iconDanger}
+                          label="删除词源关系"
+                          onConfirm={() =>
+                            void props.application
+                              .deleteEtymologyRelation(relation.id)
+                              .then(load)
+                              .then(props.onChanged)
+                              .catch(report(props.onStatus))
+                          }
+                        />
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="尚未建立关系"
+                body="可在右侧创建当前语言的词源或接触关系。"
+              />
+            )}
+          </section>
         )}
         {mode === "single" ? (
           <aside className={styles.etymologyEditor}>
@@ -2155,9 +2302,7 @@ export function EtymologyWorkspace(
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={
-                    borrowingBusy || Boolean(singleBorrowingBlocker)
-                  }
+                  disabled={borrowingBusy || Boolean(singleBorrowingBlocker)}
                   onClick={() => void previewBorrowing()}
                 >
                   {borrowingBusy ? "正在分析…" : "生成借词候选"}
@@ -2472,9 +2617,7 @@ export function EtymologyWorkspace(
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={
-                    borrowingBusy || Boolean(batchBorrowingBlocker)
-                  }
+                  disabled={borrowingBusy || Boolean(batchBorrowingBlocker)}
                   onClick={() =>
                     void previewBorrowingSources(
                       batchCandidates.filter((value) => batchSelected[value.id])
@@ -2546,8 +2689,349 @@ export function EtymologyWorkspace(
           </aside>
         )}
       </div>
+      <DuplicateBorrowingDialog
+        prompt={duplicatePrompt}
+        sourceForm={
+          duplicatePrompt?.relation.sourceLexemeId
+            ? lexemeById.get(duplicatePrompt.relation.sourceLexemeId)
+                ?.romanized ?? "所选来源词"
+            : duplicatePrompt?.relation.sourceForm ?? "所选来源词"
+        }
+        busy={modalBusy}
+        onClose={() => setDuplicatePrompt(undefined)}
+        onConfirm={() => void confirmDuplicate().catch(report(props.onStatus))}
+      />
+      <DeleteBorrowingDialog
+        relation={deletePrompt}
+        targetForm={
+          deletePrompt
+            ? lexemeById.get(deletePrompt.targetLexemeId)?.romanized ??
+              "对应借词词条"
+            : ""
+        }
+        mode={deleteMode}
+        busy={modalBusy}
+        onMode={setDeleteMode}
+        onClose={() => {
+          setDeletePrompt(undefined);
+          setDeleteMode("relation_only");
+        }}
+        onConfirm={() => void confirmDelete().catch(report(props.onStatus))}
+      />
+      <BatchDuplicateBorrowingDialog
+        prompt={batchDuplicatePrompt}
+        busy={modalBusy}
+        onClose={() => setBatchDuplicatePrompt(undefined)}
+        onConfirm={(candidateIds) => {
+          setModalBusy(true);
+          void commitBorrowing(true, candidateIds)
+            .then(() => setBatchDuplicatePrompt(undefined))
+            .catch(report(props.onStatus))
+            .finally(() => setModalBusy(false));
+        }}
+      />
     </section>
   );
+}
+
+function DuplicateBorrowingDialog({
+  prompt,
+  sourceForm,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  prompt?: { relation: EtymologyRelation; check: EtymologyDuplicateCheck };
+  sourceForm: string;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const exact = prompt?.check.kind === "same_source_same_target_form";
+  return (
+    <AlertDialog.Root
+      open={Boolean(prompt)}
+      onOpenChange={(open) => !open && !busy && onClose()}
+    >
+      <AlertDialog.Overlay className={styles.dialogOverlay} />
+      <AlertDialog.Content className={styles.confirmDialog}>
+        <AlertDialog.Title>检测到重复借词来源</AlertDialog.Title>
+        <AlertDialog.Description>
+          来源词“{sourceForm}”已经建立过借词关系。
+        </AlertDialog.Description>
+        <div className={styles.duplicateComparison}>
+          <span>已有借词词形</span>
+          <strong>{prompt?.check.conflictingTargetForm || "词条已删除"}</strong>
+          <span>本次借词词形</span>
+          <strong>{prompt?.check.targetForm || "词条不存在"}</strong>
+        </div>
+        <p
+          className={exact ? styles.blockingNotice : styles.warningNotice}
+          role={exact ? "alert" : "status"}
+        >
+          {exact
+            ? "来源词和借词词形都相同，系统判定为重复，不能保存。"
+            : "借词词形不同。如确认这是同一来源词的另一个借入结果，可以继续保存。"}
+        </p>
+        <div className={styles.dialogActions}>
+          <AlertDialog.Cancel asChild>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={busy}
+            >
+              返回检查
+            </button>
+          </AlertDialog.Cancel>
+          {!exact && (
+            <AlertDialog.Action asChild>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={busy}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onConfirm();
+                }}
+              >
+                {busy ? "正在保存…" : "确认仍然保存"}
+              </button>
+            </AlertDialog.Action>
+          )}
+        </div>
+      </AlertDialog.Content>
+    </AlertDialog.Root>
+  );
+}
+
+function DeleteBorrowingDialog({
+  relation,
+  targetForm,
+  mode,
+  busy,
+  onMode,
+  onClose,
+  onConfirm,
+}: {
+  relation?: EtymologyRelation;
+  targetForm: string;
+  mode: EtymologyDeletionMode;
+  busy: boolean;
+  onMode: (mode: EtymologyDeletionMode) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root
+      open={Boolean(relation)}
+      onOpenChange={(open) => !open && !busy && onClose()}
+    >
+      <AlertDialog.Overlay className={styles.dialogOverlay} />
+      <AlertDialog.Content className={styles.confirmDialog}>
+        <AlertDialog.Title>删除借词</AlertDialog.Title>
+        <AlertDialog.Description>
+          请选择删除范围。默认只删除借词关系，不影响本语言词典。
+        </AlertDialog.Description>
+        <div
+          className={styles.deleteChoices}
+          role="radiogroup"
+          aria-label="删除范围"
+        >
+          <label data-selected={mode === "relation_only" || undefined}>
+            <input
+              type="radio"
+              name="borrowing-delete-mode"
+              value="relation_only"
+              checked={mode === "relation_only"}
+              onChange={() => onMode("relation_only")}
+            />
+            <span>
+              <strong>仅删除借词关系（推荐）</strong>
+              <small>词典中的“{targetForm}”继续保留。</small>
+            </span>
+          </label>
+          <label
+            data-selected={mode === "relation_and_target_lexeme" || undefined}
+          >
+            <input
+              type="radio"
+              name="borrowing-delete-mode"
+              value="relation_and_target_lexeme"
+              checked={mode === "relation_and_target_lexeme"}
+              onChange={() => onMode("relation_and_target_lexeme")}
+            />
+            <span>
+              <strong>同时删除借词词条</strong>
+              <small>
+                “{targetForm}”及其词义、语素关联和其他相关记录也会删除。
+              </small>
+            </span>
+          </label>
+        </div>
+        <div className={styles.dialogActions}>
+          <AlertDialog.Cancel asChild>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={busy}
+            >
+              取消
+            </button>
+          </AlertDialog.Cancel>
+          <AlertDialog.Action asChild>
+            <button
+              type="button"
+              className={styles.dangerButton}
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                onConfirm();
+              }}
+            >
+              {busy
+                ? "正在删除…"
+                : mode === "relation_only"
+                ? "仅删除关系"
+                : "删除关系和词条"}
+            </button>
+          </AlertDialog.Action>
+        </div>
+      </AlertDialog.Content>
+    </AlertDialog.Root>
+  );
+}
+
+function BatchDuplicateBorrowingDialog({
+  prompt,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  prompt?: {
+    batchId: string;
+    candidateIds: string[];
+    check: BorrowingBatchDuplicateCheck;
+  };
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (candidateIds: string[]) => void;
+}) {
+  const conflicts = useMemo(
+    () => summarizeBorrowingConflicts(prompt?.check),
+    [prompt?.check]
+  );
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setSelected(
+      Object.fromEntries(
+        conflicts.map((conflict) => [
+          conflict.candidateId,
+          conflict.kind === "same_source_different_target",
+        ])
+      )
+    );
+  }, [conflicts]);
+  const conflictIds = new Set(
+    conflicts.map((conflict) => conflict.candidateId)
+  );
+  const selectedCandidateIds = (prompt?.candidateIds ?? []).filter(
+    (id) => !conflictIds.has(id) || selected[id]
+  );
+  return (
+    <AlertDialog.Root
+      open={Boolean(prompt)}
+      onOpenChange={(open) => !open && !busy && onClose()}
+    >
+      <AlertDialog.Overlay className={styles.dialogOverlay} />
+      <AlertDialog.Content className={styles.confirmDialog}>
+        <AlertDialog.Title>批量借词中检测到重复来源</AlertDialog.Title>
+        <AlertDialog.Description>
+          已接受候选中有 {conflicts.length}{" "}
+          项来源词重复。勾选要创建的不同词形；完全重复项不能创建。
+        </AlertDialog.Description>
+        <div className={styles.batchDuplicateList}>
+          {conflicts.map((conflict) => {
+            const blocked = conflict.kind === "same_source_same_target_form";
+            return (
+              <label
+                key={conflict.candidateId}
+                data-disabled={blocked || undefined}
+                data-selected={selected[conflict.candidateId] || undefined}
+              >
+                <input
+                  type="checkbox"
+                  name={`create-borrowing-${conflict.candidateId}`}
+                  aria-label={`创建借词 ${conflict.targetForm}`}
+                  checked={Boolean(selected[conflict.candidateId])}
+                  disabled={blocked || busy}
+                  onChange={(event) =>
+                    setSelected((current) => ({
+                      ...current,
+                      [conflict.candidateId]: event.target.checked,
+                    }))
+                  }
+                />
+                <strong>{conflict.sourceForm}</strong>
+                <span>
+                  已有/同批次：{conflict.conflictingTargetForm || "词条已删除"}
+                </span>
+                <span>本次：{conflict.targetForm}</span>
+                <small data-blocking={blocked || undefined}>
+                  {blocked ? "完全重复，不能创建" : "不同词形，可选择创建"}
+                </small>
+              </label>
+            );
+          })}
+        </div>
+        <p className={styles.warningNotice} role="status">
+          将写入 {selectedCandidateIds.length}{" "}
+          个借词。灰色项目已自动排除，不会写入词典。
+        </p>
+        <div className={styles.dialogActions}>
+          <AlertDialog.Cancel asChild>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={busy}
+            >
+              返回候选表
+            </button>
+          </AlertDialog.Cancel>
+          <AlertDialog.Action asChild>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={busy || selectedCandidateIds.length === 0}
+              onClick={(event) => {
+                event.preventDefault();
+                onConfirm(selectedCandidateIds);
+              }}
+            >
+              {busy
+                ? "正在保存…"
+                : selectedCandidateIds.length
+                ? `写入 ${selectedCandidateIds.length} 个借词`
+                : "没有可写入的借词"}
+            </button>
+          </AlertDialog.Action>
+        </div>
+      </AlertDialog.Content>
+    </AlertDialog.Root>
+  );
+}
+
+function summarizeBorrowingConflicts(check?: BorrowingBatchDuplicateCheck) {
+  const byCandidate = new Map<
+    string,
+    BorrowingBatchDuplicateCheck["conflicts"][number]
+  >();
+  for (const conflict of check?.conflicts ?? []) {
+    const current = byCandidate.get(conflict.candidateId);
+    if (!current || conflict.kind === "same_source_same_target_form") {
+      byCandidate.set(conflict.candidateId, conflict);
+    }
+  }
+  return [...byCandidate.values()];
 }
 
 type ChronologySelection = { ids: string[]; names: string[]; error?: string };
@@ -2811,7 +3295,9 @@ function BorrowingCandidateReview(props: {
     <div className={styles.borrowingCandidates}>
       {Boolean(props.aiAdjustments?.length) && (
         <details className={styles.aiBorrowingAdjustments}>
-          <summary>AI 建议的当前批次调整（{props.aiAdjustments!.length}）</summary>
+          <summary>
+            AI 建议的当前批次调整（{props.aiAdjustments!.length}）
+          </summary>
           <p>这些调整只作为本次审核参考，不会修改已保存的借词方案。</p>
           <ul>
             {props.aiAdjustments!.map((adjustment, index) => (
@@ -2839,80 +3325,84 @@ function BorrowingCandidateReview(props: {
         const aiAction = String(aiRecommendation?.action ?? "");
         return (
           <div key={candidate.id}>
-          <input
-            type="checkbox"
-            checked={candidate.status === "accepted"}
-            onChange={(event) =>
-              update(candidate, {
-                status: event.target.checked ? "accepted" : "pending",
-              })
-            }
-            aria-label={`保留 ${candidate.adaptedForm}`}
-          />
-          <span>
-            <strong>{candidate.sourceForm}</strong>
-            <small>{candidate.sourceIpa}</small>
-          </span>
-          <label>
             <input
-              value={candidate.adaptedForm}
-              onChange={(event) =>
-                update(candidate, { adaptedForm: event.target.value })
-              }
-            />
-            <input
-              value={candidate.adaptedIpa}
-              aria-label={`${candidate.adaptedForm} 的 IPA`}
-              onChange={(event) =>
-                update(candidate, { adaptedIpa: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <input
-              value={candidate.partOfSpeech}
-              onChange={(event) =>
-                update(candidate, { partOfSpeech: event.target.value })
-              }
-            />
-            <input
-              value={candidate.senses[0]?.definition ?? ""}
-              aria-label={`${candidate.adaptedForm} 的核心释义`}
+              type="checkbox"
+              checked={candidate.status === "accepted"}
               onChange={(event) =>
                 update(candidate, {
-                  senses: [
-                    { definition: event.target.value, position: 0 },
-                    ...candidate.senses.slice(1),
-                  ],
+                  status: event.target.checked ? "accepted" : "pending",
                 })
               }
+              aria-label={`保留 ${candidate.adaptedForm}`}
             />
-          </label>
-          <span>{candidate.distance?.toFixed(2) ?? "—"}</span>
-          <span>{candidate.warnings.join("；") || "无"}</span>
-          <span>
-            {candidate.morphemeIds.length
-              ? `${candidate.morphemeIds.length} 个语素`
-              : "未启用"}
-          </span>
-          <span>
-            {candidate.evolvedForm ? candidate.evolvedForm : "未运行"}
-          </span>
-          <span className={aiRecommendation ? styles.aiBorrowingStatus : undefined}>
-            {aiAction === "reject"
-              ? "AI 拒绝"
-              : aiAction === "adjust"
+            <span>
+              <strong>{candidate.sourceForm}</strong>
+              <small>{candidate.sourceIpa}</small>
+            </span>
+            <label>
+              <input
+                value={candidate.adaptedForm}
+                onChange={(event) =>
+                  update(candidate, { adaptedForm: event.target.value })
+                }
+              />
+              <input
+                value={candidate.adaptedIpa}
+                aria-label={`${candidate.adaptedForm} 的 IPA`}
+                onChange={(event) =>
+                  update(candidate, { adaptedIpa: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              <input
+                value={candidate.partOfSpeech}
+                onChange={(event) =>
+                  update(candidate, { partOfSpeech: event.target.value })
+                }
+              />
+              <input
+                value={candidate.senses[0]?.definition ?? ""}
+                aria-label={`${candidate.adaptedForm} 的核心释义`}
+                onChange={(event) =>
+                  update(candidate, {
+                    senses: [
+                      { definition: event.target.value, position: 0 },
+                      ...candidate.senses.slice(1),
+                    ],
+                  })
+                }
+              />
+            </label>
+            <span>{candidate.distance?.toFixed(2) ?? "—"}</span>
+            <span>{candidate.warnings.join("；") || "无"}</span>
+            <span>
+              {candidate.morphemeIds.length
+                ? `${candidate.morphemeIds.length} 个语素`
+                : "未启用"}
+            </span>
+            <span>
+              {candidate.evolvedForm ? candidate.evolvedForm : "未运行"}
+            </span>
+            <span
+              className={
+                aiRecommendation ? styles.aiBorrowingStatus : undefined
+              }
+            >
+              {aiAction === "reject"
+                ? "AI 拒绝"
+                : aiAction === "adjust"
                 ? "AI 已调整"
                 : aiAction === "keep"
-                  ? "AI 保留"
-                  : props.batch.llmModelLabel
-                    ? "未推荐"
-                    : "未使用"}
-          </span>
-          <details>
-            <summary>查看</summary>
-            <pre>{JSON.stringify(candidate.trace, null, 2)}</pre>
-          </details>
+                ? "AI 保留"
+                : props.batch.llmModelLabel
+                ? "未推荐"
+                : "未使用"}
+            </span>
+            <details>
+              <summary>查看</summary>
+              <pre>{JSON.stringify(candidate.trace, null, 2)}</pre>
+            </details>
           </div>
         );
       })}

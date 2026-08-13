@@ -1,4 +1,9 @@
-import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
+import {
+  BorrowingBatchDuplicateCheck,
+  CommitBorrowingOptions,
+  Phase6Application,
+} from "@/fishtongue/application/ports/Phase6Application";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import {
   BorrowingBatchRepository,
   BorrowingProfileRepository,
@@ -27,7 +32,8 @@ export default class Phase6ApplicationService implements Phase6Application {
     private readonly changed: () => Promise<void>,
     private readonly analysis: PhonologyAnalysisEngine,
     private readonly adaptation: BorrowingAdaptationService,
-    private readonly stageResolver: StageStateResolver
+    private readonly stageResolver: StageStateResolver,
+    private readonly history: Phase5Application
   ) {}
 
   async getPhonology(languageId: string, stageId?: string) {
@@ -133,7 +139,85 @@ export default class Phase6ApplicationService implements Phase6Application {
     return this.adaptation.preview({ ...input, lexurgyStages }, signal);
   }
 
-  async commitBorrowing(batchId: string, candidateIds: string[]) {
+  async checkBorrowingDuplicates(
+    batchId: string,
+    candidateIds: string[]
+  ): Promise<BorrowingBatchDuplicateCheck> {
+    const batch = await this.batches.get(batchId);
+    if (!batch) throw new Error("借词审核批次不存在。");
+    const selected = candidateIds.map((id) => {
+      const candidate = batch.candidates.find((value) => value.id === id);
+      if (!candidate) throw new Error("所选借词候选不属于当前审核批次。");
+      return candidate;
+    });
+    const conflicts: BorrowingBatchDuplicateCheck["conflicts"] = [];
+
+    for (const candidate of selected) {
+      const targetForm = borrowingCandidateForm(candidate);
+      const existing = await this.history.checkBorrowingDuplicate({
+        sourceLexemeId: candidate.sourceLexemeId,
+        sourceForm: candidate.sourceForm,
+        targetForm,
+      });
+      if (existing.kind !== "none") {
+        conflicts.push({
+          candidateId: candidate.id,
+          sourceLexemeId: candidate.sourceLexemeId,
+          sourceForm: candidate.sourceForm,
+          targetForm,
+          conflictingTargetForm: existing.conflictingTargetForm ?? "",
+          kind: existing.kind,
+        });
+      }
+
+      const earlier = selected.find(
+        (value) =>
+          value.id !== candidate.id &&
+          selected.indexOf(value) < selected.indexOf(candidate) &&
+          sameBorrowingSource(value, candidate)
+      );
+      if (earlier) {
+        const earlierForm = borrowingCandidateForm(earlier);
+        conflicts.push({
+          candidateId: candidate.id,
+          sourceLexemeId: candidate.sourceLexemeId,
+          sourceForm: candidate.sourceForm,
+          targetForm,
+          conflictingTargetForm: earlierForm,
+          kind: sameWrittenForm(earlierForm, targetForm)
+            ? "same_source_same_target_form"
+            : "same_source_different_target",
+        });
+      }
+    }
+
+    return {
+      kind: conflicts.some(
+        (value) => value.kind === "same_source_same_target_form"
+      )
+        ? "same_source_same_target_form"
+        : conflicts.length
+          ? "same_source_different_target"
+          : "none",
+      conflicts,
+    };
+  }
+
+  async commitBorrowing(
+    batchId: string,
+    candidateIds: string[],
+    options: CommitBorrowingOptions = {}
+  ) {
+    const duplicate = await this.checkBorrowingDuplicates(batchId, candidateIds);
+    if (duplicate.kind === "same_source_same_target_form") {
+      throw new Error("批量借词中存在来源词和借词词形都相同的重复项，不能保存。");
+    }
+    if (
+      duplicate.kind === "same_source_different_target" &&
+      !options.confirmSameSource
+    ) {
+      throw new Error("批量借词中有来源词已建立过借词关系，请确认后再保存。");
+    }
     const result = await this.adaptation.commit(batchId, candidateIds);
     await this.changed();
     return result;
@@ -143,4 +227,28 @@ export default class Phase6ApplicationService implements Phase6Application {
     await this.batches.discard(batchId, new Date().toISOString());
     await this.changed();
   }
+}
+
+function borrowingCandidateForm(candidate: BorrowingCandidate): string {
+  return (candidate.evolvedForm || candidate.adaptedForm).trim();
+}
+
+function sameBorrowingSource(
+  left: BorrowingCandidate,
+  right: BorrowingCandidate
+): boolean {
+  if (left.sourceLexemeId || right.sourceLexemeId) {
+    return Boolean(
+      left.sourceLexemeId &&
+        right.sourceLexemeId &&
+        left.sourceLexemeId === right.sourceLexemeId
+    );
+  }
+  return sameWrittenForm(left.sourceForm, right.sourceForm);
+}
+
+function sameWrittenForm(left: string, right: string): boolean {
+  const normalize = (value: string) =>
+    value.trim().normalize("NFC").toLocaleLowerCase();
+  return Boolean(normalize(left)) && normalize(left) === normalize(right);
 }

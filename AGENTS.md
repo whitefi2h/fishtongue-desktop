@@ -1,8 +1,8 @@
 # FishTongue Agent Instructions
 
-## Phase 6 当前状态
+## Phase 6 结项状态
 
-- Phase 5 已于 2026-08-09 通过外部 Windows 人工验收并结项；Phase 6 正在实现正式音系、PanPhon 与智能借词适配。
+- Phase 5 已于 2026-08-09 通过外部 Windows 人工验收并结项；Phase 6 已于 2026-08-13 通过外部 Windows 人工验收并正式结项。
 - 正式词典、语素、造词配置、审核批次和撤销使用 Phase 3 数据模型与真实 Repository；
   数据库迁移 v4 修复候选恢复，迁移 v5 支持同一批次分次提交和逐次撤销。
 - 确定性造词固定使用 `wordgen-profile-v1`、`splitmix64-v1` 和十进制字符串种子。
@@ -14,7 +14,7 @@
   旧语言和新语言都必须拥有一个不可删除的内部默认状态。
 - Phase 5 的时间父级与数据基础是两个独立关系；无记录阶段固定使用 `no_data`。
 - Phase 5 总验收与外部人工验收均已通过；回归命令是 `npm run verify:phase5`。
-- Phase 6 规划基线见 `docs/phase-6-development-plan.md`；本阶段不做 Morfessor、自动语素切分、音韵对应或逆向重构。Analysis Sidecar 只产生候选和证据，不得自动重建祖语、修改谱系或绕过审核写入正式数据。
+- Phase 6 已结项，规划与验收基线见 `docs/phase-6-development-plan.md`；本阶段不做 Morfessor、自动语素切分、音韵对应或逆向重构。Analysis Sidecar 只产生候选和证据，不得自动重建祖语、修改谱系或绕过审核写入正式数据。
 - Phase 6 当前数据库版本是 v14：v13 建立正式音系和借词审核数据，v14 允许持久化 `borrowing_adaptation.suggest` 安全提案。IPA 分析边界将拉丁小写 `g` 兼容映射为 IPA 小写 `ɡ`，但不得改写用户保存的词形或显示文本。
 - Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
 - API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
@@ -23,7 +23,7 @@
 
 - 先读 `README.md`；桌面调整方案覆盖此前冲突的 Web 架构决定。
 - 再读 `.context/CONTEXT.md`；它记录当前代码的组合根、依赖方向和跨阶段接口边界。
-- Phase 1～Phase 5 已通过验收；Phase 6 实施基线见
+- Phase 1～Phase 6 已通过验收；Phase 6 实施与回归基线见
   `docs/phase-6-development-plan.md`。
 - Phase 1.5 的产品、信息架构和 UI/UX 以 `docs/phase-1-5-ui-ux-design-spec.md` 为最高优先级基线；与旧文档冲突时采用该方案。
 - Phase 3 只把通过真实 Repository 和 Sidecar 验证的词典、语素与造词能力标为
