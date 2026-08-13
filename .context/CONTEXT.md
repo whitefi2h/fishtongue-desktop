@@ -1,10 +1,19 @@
 # FishTongue 开发上下文
 
+## Phase 7.1 已封存边界
+
+- Phase 7.1 已于 2026-08-14 通过外部 Windows 人工验收并正式结项；后续阶段必须回归其全局撤销/重做、阶段词典和导航语义。
+- Schema v16 新增 `project_operations`。正式写入必须通过 `ProjectApplication.runProjectOperation` 形成一个可读、可冲突检测、可跨重启回放的项目操作；新操作清空重做栈，每个项目最多保留 100 条已完成操作。
+- Rust `project_history` 在写入前保存待恢复快照，完成后只持久化实际变化；失败或下次打开项目时恢复 `pending` 操作。撤销/重做在单一 SQLite 事务内回放，当前行与预期状态不一致时拒绝覆盖。
+- 全局快捷键只在非文本编辑环境生效；input、textarea、contenteditable 和 CodeMirror 使用各自的本地撤销栈。
+- 历史阶段词典继续由 `StageStateResolver` 解析完整状态，编辑只保存当前阶段的 `lexicon` 覆盖；`no_data` 阶段不可编辑，内部默认状态不得进入普通导航。
+- 入口审计、风险与人工验收基线位于 `docs/phase-7-1/`。
+
 ## Phase 6 规划边界
 
 - Phase 6 已于 2026-08-13 通过外部 Windows 人工验收并正式结项；后续改动必须保持其自动化与人工验收基线。
 - Phase 5 已通过外部 Windows 人工验收；其 Schema v12、历史阶段、谱系、方言、事件、词源、语言接触和跨阶段演化能力作为只回归、不改写语义的基线。
-- Phase 6 升级到 Schema v14：v13 建立正式音系、音位表和分析批次，v14 补充 `borrowing_adaptation.suggest` AI 提案约束；历史阶段音系继续由 `StageStateResolver` 解析，`no_data` 阶段拒绝音系数据。
+- Phase 6 最终升级到 Schema v15：v13 建立正式音系、音位表和分析批次，v14 补充 `borrowing_adaptation.suggest` AI 提案约束，v15 持久化借词证据备注；历史阶段音系继续由 `StageStateResolver` 解析，`no_data` 阶段拒绝音系数据。
 - 借词工作区的未提交表单在当前应用会话内按“项目 + 当前语言”记忆；PanPhon 分析边界兼容拉丁小写 `g` 与 IPA 小写 `ɡ`，但正式词形和用户保存的 IPA 不做全局替换。
 - 单条新建和 Phase 6 批量提交都按来源词自动判重，并在正式写入前由 Service 再次检查：同一来源与同一目标词形禁止重复保存，同一来源的不同目标词形必须由用户明确确认；批次内部也执行相同规则。批量重复弹窗允许逐条勾选不同词形，完全重复项固定禁用并从本次提交排除。删除借词时默认只删除关系；只有用户在应用内确认选择后，才通过删除目标词条及 SQLite 外键级联同时清理词条与关系。
 - Analysis Sidecar 使用独立 Python/PyInstaller `onedir` 产物，由 Rust 以短命进程和 NDJSON 标准输入输出协议管理；React 不得直接访问进程或 Python。
@@ -212,6 +221,8 @@ npm run verify:phase2
 npm run verify:phase3
 npm run verify:phase4
 npm run verify:phase5
+npm run verify:phase6
+npm run verify:phase7-1
 ```
 
 如果某项因本机工具或下载条件未运行，报告为“未验证”，不得写成通过。

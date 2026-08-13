@@ -3,6 +3,7 @@ mod analysis;
 mod lexurgy;
 mod migrations;
 mod project_files;
+mod project_history;
 
 use ai::{
     ai_cancel, ai_list_models, ai_secret_delete, ai_secret_set, ai_secret_status, ai_stream_turn,
@@ -22,6 +23,10 @@ use project_files::{
     create_project_workspace, discard_project_workspace, import_project_archive,
     inspect_project_recovery, mark_project_dirty, open_project_archive, recover_project_workspace,
     save_project_archive,
+};
+use project_history::{
+    abort_project_operation, begin_project_operation, complete_project_operation,
+    recover_pending_project_operations, redo_project_operation, undo_project_operation,
 };
 use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -43,6 +48,12 @@ pub fn run() {
             recover_project_workspace,
             discard_project_workspace,
             migrate_active_project_database,
+            begin_project_operation,
+            complete_project_operation,
+            abort_project_operation,
+            undo_project_operation,
+            redo_project_operation,
+            recover_pending_project_operations,
             lexurgy_status,
             lexurgy_ensure_ready,
             lexurgy_validate,

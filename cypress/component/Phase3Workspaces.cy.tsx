@@ -1,5 +1,6 @@
 import { WordGenerationEngine } from "@/fishtongue/application/ports/WordGenerationEngine";
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
 import { GenerationBatch, Lexeme, Morpheme, ProjectSession } from "@/fishtongue/domain/models";
 import LexiconWorkspace from "@/fishtongue/ui/LexiconWorkspace";
@@ -147,6 +148,44 @@ describe("Phase 3 workspaces", () => {
     cy.contains("button", "in").click();
     cy.contains("已关联 2 个语素").should("be.visible");
     cy.get("button[aria-label='移除语素 in']").should("be.visible");
+  });
+
+  it("edits an inherited lexeme as a stage override without changing the source lexeme", () => {
+    const { app, state } = fakeApplication();
+    const source = lexeme("l1", "mar", "海洋");
+    state.lexemes = [source];
+    const saved: unknown[] = [];
+    const stages = [
+      { id: "default", languageId: "l1", name: "内部", kind: "internal_default", documentationStatus: "recorded", storageMode: "independent_snapshot", position: 0, visible: false, createdAt: "", updatedAt: "" },
+      { id: "old", languageId: "l1", name: "祖语期", kind: "historical_stage", documentationStatus: "recorded", storageMode: "inherited_delta", dataBaseStageId: "default", position: 1, visible: true, createdAt: "", updatedAt: "" },
+      { id: "late", languageId: "l1", name: "后期", kind: "historical_stage", documentationStatus: "recorded", storageMode: "inherited_delta", dataBaseStageId: "old", position: 2, visible: true, createdAt: "", updatedAt: "" },
+    ] as const;
+    const history = {
+      listStages: async () => structuredClone(stages),
+      listStageOverrides: async (stageId: string) => stageId === "old" ? [{
+        id: "old-lexeme", stageId: "old", componentType: "lexicon", operation: "replace",
+        targetId: source.id, payload: structuredClone(source), position: 0, createdAt: "", updatedAt: "",
+      }] : [],
+      resolveStage: async () => ({
+        stage: structuredClone(stages[2]), lineage: ["default", "old", "late"], warnings: [],
+        components: { lexicon: { [source.id]: structuredClone(source) }, morphemes: {}, wordgen: {} },
+      }),
+      saveStageOverride: async (value: unknown) => { saved.push(structuredClone(value)); },
+    } as unknown as Phase5Application;
+
+    cy.mount(<LexiconWorkspace application={app} historyApplication={history}
+      languageId="l1" stageId="late" createRequest={0} onProjectChanged={() => {}} onStatus={() => {}} />);
+    cy.contains("继承自祖语期").should("be.visible");
+    cy.contains("button", "保存词条").should("not.be.disabled");
+    cy.contains("button", "删除").should("not.be.disabled");
+    cy.contains("label", "词形").find("input").clear().type("mare");
+    cy.contains("button", "保存词条").click();
+    cy.wrap(null).should(() => {
+      expect(saved).to.have.length(1);
+      expect((saved[0] as { stageId: string }).stageId).to.equal("late");
+      expect(((saved[0] as { payload: Lexeme }).payload).romanized).to.equal("mare");
+      expect(state.lexemes[0].romanized).to.equal("mar");
+    });
   });
 
   it("shows only selected source words until the user searches", () => {

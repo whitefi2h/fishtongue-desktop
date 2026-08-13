@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
-pub const DATABASE_SCHEMA_VERSION: u32 = 15;
+pub const DATABASE_SCHEMA_VERSION: u32 = 16;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -94,9 +94,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 15,
             description: "separate_borrowing_evidence_from_lexeme_notes",
             sql: include_str!("../migrations/0015_phase_6_borrowing_lexeme_notes.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "create_phase_7_project_history",
+            sql: include_str!("../migrations/0016_phase_7_project_history.sql"),
             kind: MigrationKind::Up,
         },
     ]

@@ -136,7 +136,7 @@ const icons: Partial<Record<WorkspaceRoute, ElementType>> = {
 
 const menus = [
   { label: "文件", items: [["新建项目", "Ctrl+N", "new"], ["打开项目…", "Ctrl+O", "open"], ["保存", "Ctrl+S", "save"], ["另存为…", "Ctrl+Shift+S", "save-as"], ["关闭项目", "", "close-project"], ["退出", "Alt+F4", "quit"]] },
-  { label: "编辑", items: [["撤销", "Ctrl+Z", "planned"], ["重做", "Ctrl+Y", "planned"], ["查找", "Ctrl+F", "search"], ["全局搜索", "Ctrl+K", "search"], ["偏好设置", "", "project-settings"]] },
+  { label: "编辑", items: [["撤销", "Ctrl+Z", "undo"], ["重做", "Ctrl+Y", "redo"], ["查找", "Ctrl+F", "search"], ["全局搜索", "Ctrl+K", "search"], ["偏好设置", "", "project-settings"]] },
   { label: "视图", items: [["项目主页", "", "project-home"], ["语言谱系", "", "genealogy"], ["切换导航栏", "", "toggle-nav"], ["切换 AI", "", "toggle-ai"], ["切换主题", "", "toggle-theme"]] },
   { label: "项目", items: [["项目属性", "", "project-settings"], ["新建语言", "", "new-language"], ["导入语言", "", "planned"], ["历史事件", "", "events"], ["项目诊断", "", "planned"]] },
   { label: "语言", items: [["语言属性", "", "language-properties"], ["阶段管理", "", "stages"], ["方言管理", "", "dialects"], ["创建下一阶段", "", "planned"], ["验证语言", "", "planned"]] },
@@ -146,13 +146,15 @@ const menus = [
 
 const englishMenus = [
   { label: "File", items: [["New project", "Ctrl+N", "new"], ["Open project…", "Ctrl+O", "open"], ["Save", "Ctrl+S", "save"], ["Save as…", "Ctrl+Shift+S", "save-as"], ["Close project", "", "close-project"], ["Exit", "Alt+F4", "quit"]] },
-  { label: "Edit", items: [["Undo", "Ctrl+Z", "planned"], ["Redo", "Ctrl+Y", "planned"], ["Find", "Ctrl+F", "search"], ["Global search", "Ctrl+K", "search"], ["Preferences", "", "project-settings"]] },
+  { label: "Edit", items: [["Undo", "Ctrl+Z", "undo"], ["Redo", "Ctrl+Y", "redo"], ["Find", "Ctrl+F", "search"], ["Global search", "Ctrl+K", "search"], ["Preferences", "", "project-settings"]] },
   { label: "View", items: [["Project home", "", "project-home"], ["Language family", "", "genealogy"], ["Toggle navigation", "", "toggle-nav"], ["Toggle AI", "", "toggle-ai"], ["Switch theme", "", "toggle-theme"]] },
   { label: "Project", items: [["Project properties", "", "project-settings"], ["New language", "", "new-language"], ["Import language", "", "planned"], ["Historical events", "", "events"], ["Project diagnostics", "", "planned"]] },
   { label: "Language", items: [["Language properties", "", "language-properties"], ["Manage stages", "", "stages"], ["Manage dialects", "", "dialects"], ["Create next stage", "", "planned"], ["Validate language", "", "planned"]] },
   { label: "Tools", items: [["IPA tools", "", "phonology"], ["Sound-change tester", "", "evolution"], ["Batch import", "", "planned"], ["Developer tools", "", "developer-tools"], ["AI and model settings", "", "ai-settings"]] },
   { label: "Help", items: [["Lexurgy quick reference", "F1", "lexurgy-help"], ["Keyboard shortcuts", "", "planned"], ["Linguistics glossary", "", "planned"], ["About FishTongue", "", "planned"]] },
 ] as const;
+
+const STAGE_LOAD_TIMEOUT_MS = 3_000;
 
 export default function FishTongueDesktopApp({
   application,
@@ -180,6 +182,7 @@ export default function FishTongueDesktopApp({
     stageId?: string;
     lexiconTab: LexiconEntryTab;
     lexemeId?: string;
+    scrollTop: number;
   };
   const [mode, setMode] = useState<AppMode>("welcome");
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
@@ -218,14 +221,30 @@ export default function FishTongueDesktopApp({
   >({});
   const [aiPromptRequest, setAiPromptRequest] = useState<{ id: string; prompt: string }>();
   const [projectDataRefreshRequest, setProjectDataRefreshRequest] = useState(0);
+  const [historyReplayRevision, setHistoryReplayRevision] = useState(0);
+  const [stageReadyLanguageId, setStageReadyLanguageId] = useState<string>();
+  const [stageLoadRequest, setStageLoadRequest] = useState(0);
+  const [stageLoadFailure, setStageLoadFailure] = useState<{
+    languageId: string;
+    message: string;
+  }>();
+  const [lexiconViewStates, setLexiconViewStates] = useState<
+    Record<string, { search: string; selectedId?: string }>
+  >({});
   const closingRef = useRef(false);
   const mainWorkspaceRef = useRef<HTMLElement | null>(null);
+  const pendingScrollRestoreRef = useRef<number>();
+  const recentStageIdsRef = useRef(new Map<string, string>());
   const currentRoute = routesById[route];
   const workspaceLanguages = useMemo(
     () => snapshot
       ? snapshot.languages.map(toPrototypeLanguage)
       : prototypeProject.languages,
     [snapshot]
+  );
+  const activeProjectId = snapshot?.project.id;
+  const selectedLanguageExists = Boolean(
+    snapshot?.languages.some((language) => language.id === selectedLanguage.id)
   );
   const autoCollapseNavigation = compactViewport && aiOpen;
   const navigationCollapsed = navCollapsed || (autoCollapseNavigation && !navOverlayOpen);
@@ -239,33 +258,79 @@ export default function FishTongueDesktopApp({
     },
     []
   );
+  const rememberLexiconViewState = useCallback(
+    (key: string, state: { search: string; selectedId?: string }) =>
+      setLexiconViewStates((current) => ({ ...current, [key]: state })),
+    []
+  );
+  const selectWorkspaceLanguage = useCallback((language: PrototypeLanguage) => {
+    setSelectedLanguage(language);
+    if (snapshot) {
+      setStageLoadFailure(undefined);
+      setStageReadyLanguageId(undefined);
+      setSelectedStage(undefined);
+      setStageLoadRequest((value) => value + 1);
+      return;
+    }
+    setSelectedStage(language.stages[0]);
+  }, [snapshot]);
 
   useEffect(() => {
-    if (!snapshot || !historyApplication ||
-        !snapshot.languages.some((language) => language.id === selectedLanguage.id)) return;
-    void historyApplication.listStages(selectedLanguage.id).then((stages) => {
+    if (!activeProjectId || !historyApplication || !selectedLanguageExists) return;
+    let cancelled = false;
+    let settled = false;
+    const languageId = selectedLanguage.id;
+    setStageLoadFailure((current) => current?.languageId === languageId ? undefined : current);
+    const fail = (detail: string) => {
+      if (cancelled || settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      setStageReadyLanguageId(languageId);
+      setStageLoadFailure({ languageId, message: detail });
+      setMessage(`${detail}；可在阶段菜单中重新读取。`);
+    };
+    const timeoutId = window.setTimeout(
+      () => fail("阶段读取超时"),
+      STAGE_LOAD_TIMEOUT_MS
+    );
+    void historyApplication.listStages(languageId).then((stages) => {
+      if (cancelled || settled) return;
       const toStageItem = (stage: (typeof stages)[number]) => ({
         id: stage.id,
         name: stage.name,
         years: [stage.startLabel, stage.endLabel].filter(Boolean).join("—") || "年代未设置",
         documentation: stage.documentationStatus,
       });
-      const allStageItems = stages.map(toStageItem);
-      const visible = stages.filter((stage) => stage.visible).map(toStageItem);
-      const defaultStage = stages.find((stage) => stage.kind === "internal_default");
-      setSelectedLanguage((current) => current.id === selectedLanguage.id
+      const visible = stages
+        .filter((stage) => stage.visible && stage.kind === "historical_stage")
+        .sort((left, right) => left.position - right.position)
+        .map(toStageItem);
+      setSelectedLanguage((current) => current.id === languageId
         ? { ...current, stages: visible }
         : current);
-      setSelectedStage((current) =>
-        allStageItems.find((stage) => stage.id === current?.id) ??
-        (defaultStage ? toStageItem(defaultStage) : visible[0])
-      );
-    }).catch((reason) => setMessage(`无法读取阶段：${errorMessage(reason)}`));
+      setSelectedStage((current) => {
+        const preferredId = recentStageIdsRef.current.get(languageId);
+        return visible.find((stage) => stage.id === current?.id) ??
+          visible.find((stage) => stage.id === preferredId) ??
+          visible[0];
+      });
+      settled = true;
+      window.clearTimeout(timeoutId);
+      setStageReadyLanguageId(languageId);
+    }).catch((reason) => {
+      fail(`无法读取阶段：${errorMessage(reason)}`);
+    });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [
     historyApplication,
     projectDataRefreshRequest,
+    stageLoadRequest,
     selectedLanguage.id,
-    snapshot,
+    activeProjectId,
+    selectedLanguageExists,
   ]);
 
   const requestClose = useCallback(async () => {
@@ -336,8 +401,14 @@ export default function FishTongueDesktopApp({
   }, [aiOpen]);
 
   useEffect(() => {
-    mainWorkspaceRef.current?.scrollTo({ top: 0, left: 0 });
+    const top = pendingScrollRestoreRef.current ?? 0;
+    pendingScrollRestoreRef.current = undefined;
+    window.requestAnimationFrame(() => mainWorkspaceRef.current?.scrollTo({ top, left: 0 }));
   }, [route]);
+
+  useEffect(() => {
+    if (selectedStage) recentStageIdsRef.current.set(selectedLanguage.id, selectedStage.id);
+  }, [selectedLanguage.id, selectedStage]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -356,6 +427,14 @@ export default function FishTongueDesktopApp({
       if (event.ctrlKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setDialog("search");
+      }
+      if (event.ctrlKey && !isTextEditingTarget(event.target) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        void replayProjectHistory(event.shiftKey ? "redo" : "undo");
+      }
+      if (event.ctrlKey && !isTextEditingTarget(event.target) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        void replayProjectHistory("redo");
       }
       if (event.ctrlKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
@@ -425,6 +504,61 @@ export default function FishTongueDesktopApp({
     }
   };
 
+  const replayProjectHistory = async (direction: "undo" | "redo") => {
+    if (!snapshot) {
+      setMessage(locale === "zh-CN"
+        ? direction === "undo" ? "当前没有可撤销的项目操作。" : "当前没有可重做的项目操作。"
+        : direction === "undo" ? "There is no project operation to undo." : "There is no project operation to redo.");
+      return;
+    }
+    try {
+      const result = direction === "undo"
+        ? await application.undoProjectOperation()
+        : await application.redoProjectOperation();
+      if (!result) {
+        setMessage(locale === "zh-CN"
+          ? direction === "undo" ? "没有更早的项目操作可撤销。" : "没有项目操作可重做。"
+          : direction === "undo" ? "There is no earlier project operation to undo." : "There is no project operation to redo.");
+        return;
+      }
+      const current = application.getSnapshot();
+      if (current) {
+        setSnapshot({ ...current });
+        const refreshedLanguage = current.languages.find(
+          (language) => language.id === selectedLanguage.id
+        );
+        if (refreshedLanguage) {
+          setSelectedLanguage((value) => ({
+            ...toPrototypeLanguage(refreshedLanguage),
+            stages: value.stages,
+          }));
+        } else {
+          const fallback = current.languages[0];
+          if (fallback) {
+            setSelectedLanguage(toPrototypeLanguage(fallback));
+            setSelectedStage(undefined);
+          } else {
+            setRoute("project-home");
+          }
+        }
+      }
+      setProjectDataRefreshRequest((value) => value + 1);
+      setHistoryReplayRevision((value) => value + 1);
+      setMessage(locale === "zh-CN"
+        ? `${direction === "undo" ? "已撤销" : "已重做"}：${result.summary}`
+        : direction === "undo" ? "Project operation undone." : "Project operation redone.");
+    } catch (reason) {
+      const detail = errorMessage(reason);
+      setMessage(detail.includes("PROJECT_OPERATION_CONFLICT")
+        ? locale === "zh-CN"
+          ? "无法撤销：相关数据后来又被修改。当前数据未被覆盖。"
+          : "Cannot replay this operation because the data changed later. Current data was preserved."
+        : locale === "zh-CN"
+          ? `${direction === "undo" ? "撤销" : "重做"}失败：${detail}`
+          : `${direction === "undo" ? "Undo" : "Redo"} failed: ${detail}`);
+    }
+  };
+
   const navigate = (
     next: WorkspaceRoute,
     lexiconTab: LexiconEntryTab = "dictionary",
@@ -439,7 +573,13 @@ export default function FishTongueDesktopApp({
       stageId: selectedStage?.id,
       lexiconTab: lexiconEntryTab,
       lexemeId: originLexemeId,
+      scrollTop: mainWorkspaceRef.current?.scrollTop ?? 0,
     }]);
+    if (next === route) {
+      window.requestAnimationFrame(() =>
+        mainWorkspaceRef.current?.scrollTo({ top: 0, left: 0 })
+      );
+    }
     setRoute(next);
     if (routesById[next].state === "planned") {
       setPlannedTitle(routesById[next].label);
@@ -452,6 +592,14 @@ export default function FishTongueDesktopApp({
     if (!previous) return;
     setNavOverlayOpen(false);
     setRouteHistory((history) => history.slice(0, -1));
+    pendingScrollRestoreRef.current = previous.scrollTop;
+    if (previous.route === route) {
+      window.requestAnimationFrame(() => {
+        pendingScrollRestoreRef.current = undefined;
+        mainWorkspaceRef.current?.scrollTo({ top: previous.scrollTop, left: 0 });
+      });
+    }
+    if (previous.stageId) recentStageIdsRef.current.set(previous.languageId, previous.stageId);
     const language = workspaceLanguages.find((item) => item.id === previous.languageId);
     if (language) {
       setSelectedLanguage(language);
@@ -484,6 +632,8 @@ export default function FishTongueDesktopApp({
     if (id === "save-as") return void saveProject(true);
     if (id === "new-language") return setDialog("new-language");
     if (id === "search") return setDialog("search");
+    if (id === "undo") return void replayProjectHistory("undo");
+    if (id === "redo") return void replayProjectHistory("redo");
     if (id === "lexurgy-help") return setDialog("lexurgy-help");
     if (id === "toggle-nav") return toggleNavigation();
     if (id === "toggle-ai") return setAiOpen((value) => !value);
@@ -501,6 +651,18 @@ export default function FishTongueDesktopApp({
 
   const projectName = snapshot?.project.name ?? prototypeProject.name;
   const workspaceLevel = currentRoute?.group === "language" ? "language" : "project";
+  const stageLoading = Boolean(
+    snapshot && historyApplication && workspaceLevel === "language" &&
+    stageReadyLanguageId !== selectedLanguage.id
+  );
+  const stageLoadError = stageLoadFailure?.languageId === selectedLanguage.id
+    ? stageLoadFailure.message
+    : undefined;
+  const retryStageLoad = () => {
+    setStageLoadFailure(undefined);
+    setStageReadyLanguageId(undefined);
+    setStageLoadRequest((value) => value + 1);
+  };
   const pageTitle = currentRoute
     ? (locale === "zh-CN" ? currentRoute.label : currentRoute.englishLabel)
     : (locale === "zh-CN" ? "欢迎" : "Welcome");
@@ -541,6 +703,8 @@ export default function FishTongueDesktopApp({
             languages={workspaceLanguages}
             language={selectedLanguage}
             stage={selectedStage}
+            stageLoading={stageLoading}
+            stageLoadError={stageLoadError}
             page={pageTitle}
             locale={locale}
             theme={theme}
@@ -548,11 +712,11 @@ export default function FishTongueDesktopApp({
             canGoBack={routeHistory.length > 0}
             onBack={goBack}
             onLanguage={(language) => {
-              setSelectedLanguage(language);
-              setSelectedStage(language.stages[0]);
+              selectWorkspaceLanguage(language);
               navigate("language-overview");
             }}
             onStage={setSelectedStage}
+            onRetryStage={retryStageLoad}
             onLocale={() => setLocale((value) => value === "zh-CN" ? "en-US" : "zh-CN")}
             onTheme={() => setTheme((value) => value === "system" ? "light" : value === "light" ? "dark" : "system")}
             onSearch={() => setDialog("search")}
@@ -600,11 +764,11 @@ export default function FishTongueDesktopApp({
                 }}
               />
               <PageContent
+                key={`${route}:${selectedLanguage.id}:${selectedStage?.id ?? "default"}:${historyReplayRevision}`}
                 route={route}
                 language={selectedLanguage}
                 onLanguage={(language) => {
-                  setSelectedLanguage(language);
-                  setSelectedStage(language.stages[0]);
+                  selectWorkspaceLanguage(language);
                   navigate("language-overview");
                 }}
                 selectedStage={selectedStage}
@@ -636,6 +800,8 @@ export default function FishTongueDesktopApp({
                 lexiconCreateRequest={lexiconCreateRequest}
                 lexiconEntryTab={lexiconEntryTab}
                 lexiconFocusRequest={lexiconFocusRequest}
+                lexiconViewStates={lexiconViewStates}
+                onLexiconViewStateChange={rememberLexiconViewState}
                 onOpenRelatedLexeme={(languageId, lexemeId, originLexemeId) => {
                   const language = workspaceLanguages.find(
                     (item) => item.id === languageId
@@ -645,8 +811,7 @@ export default function FishTongueDesktopApp({
                     return;
                   }
                   navigate("lexicon", "dictionary", originLexemeId);
-                  setSelectedLanguage(language);
-                  setSelectedStage(undefined);
+                  selectWorkspaceLanguage(language);
                   setLexiconFocusRequest({
                     languageId,
                     lexemeId,
@@ -704,7 +869,7 @@ export default function FishTongueDesktopApp({
                 />
               : <PrototypeAiSidebar onClose={() => setAiOpen(false)} />)}
           </div>
-          <StatusBar snapshot={snapshot} level={workspaceLevel} language={selectedLanguage} stage={selectedStage?.name} message={message} />
+          <StatusBar snapshot={snapshot} level={workspaceLevel} language={selectedLanguage} stage={stageLoading ? "正在读取阶段…" : stageLoadError ? "阶段读取失败" : selectedStage?.name} message={message} />
         </div>
       )}
       <AppDialog
@@ -740,6 +905,8 @@ export default function FishTongueDesktopApp({
             if (current) setSnapshot({ ...current });
             setSelectedLanguage(toPrototypeLanguage(created));
             setSelectedStage(undefined);
+            setStageLoadFailure(undefined);
+            setStageReadyLanguageId(created.id);
             setDialog(null);
             navigate("language-overview");
             setMessage("语言已创建并保存到当前项目。");
@@ -875,6 +1042,8 @@ function ContextToolbar(props: {
   languages: PrototypeLanguage[];
   language: PrototypeLanguage;
   stage?: PrototypeLanguage["stages"][number];
+  stageLoading?: boolean;
+  stageLoadError?: string;
   page: string;
   locale: UiLocale;
   theme: ThemeMode;
@@ -883,6 +1052,7 @@ function ContextToolbar(props: {
   onBack: () => void;
   onLanguage: (language: PrototypeLanguage) => void;
   onStage: (stage?: PrototypeLanguage["stages"][number]) => void;
+  onRetryStage: () => void;
   onLocale: () => void;
   onTheme: () => void;
   onSearch: () => void;
@@ -948,11 +1118,22 @@ function ContextToolbar(props: {
             aria-expanded={switcher === "stage"}
             onClick={() => setSwitcher((value) => value === "stage" ? null : "stage")}
           >
-            {props.stage?.name || (isChinese ? "默认状态" : "Default state")}<CaretDownIcon aria-hidden="true" />
+            {props.stageLoading
+              ? isChinese ? "正在读取阶段…" : "Loading stages…"
+              : props.stageLoadError
+                ? isChinese ? "阶段读取失败" : "Stage load failed"
+              : props.stage?.name || (isChinese ? "默认状态" : "Default state")}<CaretDownIcon aria-hidden="true" />
           </button>
           <ChevronRightIcon aria-hidden="true" />
           {switcher === "stage" && <div className={styles.contextMenu} role="menu">
-            {props.language.stages.length ? props.language.stages.map((stage) => <button
+            {props.stageLoading ? <button role="menuitemradio" aria-checked={false} disabled>
+              <span><strong>{isChinese ? "正在读取阶段…" : "Loading stages…"}</strong></span>
+            </button> : props.stageLoadError ? <button role="menuitem" onClick={() => {
+              setSwitcher(null);
+              props.onRetryStage();
+            }}>
+              <span><strong>{isChinese ? "重新读取阶段" : "Retry stage loading"}</strong><small>{props.stageLoadError}</small></span>
+            </button> : props.language.stages.length ? props.language.stages.map((stage) => <button
               key={stage.id}
               role="menuitemradio"
               aria-checked={stage.id === props.stage?.id}
@@ -1064,7 +1245,6 @@ const pageDescriptions: Record<WorkspaceRoute, string> = {
   map: "地图视图将在后续版本提供。",
   reconstruction: "自动逆向历史重构将在后续版本提供。",
   "unsafe-scripting": "高级本机代码模式将在后续版本提供。",
-  "global-undo": "完整跨页面撤销依赖后续版本历史系统。",
   "glyph-designer": "原创字符绘制工具将在后续版本提供。",
 };
 
@@ -1090,7 +1270,6 @@ const pageDescriptionsEn: Record<WorkspaceRoute, string> = {
   map: "The map view will be delivered in a later phase.",
   reconstruction: "Automatic reverse historical reconstruction is planned for a later phase.",
   "unsafe-scripting": "Advanced local-code mode is planned for a later phase.",
-  "global-undo": "Cross-page undo depends on a later project-history system.",
   "glyph-designer": "The original-glyph drawing tool is planned for a later phase.",
 };
 
@@ -1121,6 +1300,11 @@ function PageContent(props: {
     lexemeId: string;
     requestId: string;
   };
+  lexiconViewStates: Record<string, { search: string; selectedId?: string }>;
+  onLexiconViewStateChange: (
+    key: string,
+    state: { search: string; selectedId?: string }
+  ) => void;
   onOpenRelatedLexeme: (
     languageId: string,
     lexemeId: string,
@@ -1144,6 +1328,9 @@ function PageContent(props: {
   const projectLanguages = props.snapshot
     ? props.snapshot.languages.map(toPrototypeLanguage)
     : prototypeProject.languages;
+  const lexiconViewStateKey = props.snapshot
+    ? `${props.snapshot.project.id}:${props.language.id}:${props.selectedStage?.id ?? "default"}`
+    : "preview";
   switch (props.route) {
     case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
     case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
@@ -1251,6 +1438,9 @@ function PageContent(props: {
                 : undefined
             }
             onOpenRelatedLexeme={props.onOpenRelatedLexeme}
+            viewStateKey={lexiconViewStateKey}
+            viewState={props.lexiconViewStates[lexiconViewStateKey]}
+            onViewStateChange={props.onLexiconViewStateChange}
           />}
         />
       : <PrototypeLexiconPage />;
@@ -1679,6 +1869,13 @@ function StatusDot({ warnings }: { warnings: number }) { return <span className=
 function Timeline() { return <div className={styles.timeline}>{[["前 80","诸王时期开始"],["112","北方贸易接触"],["260","第一次正字法整理"],["340","北迁与方言分化"]].map(([year,event],i)=><div key={year}><span>{year}</span><i data-last={i===3}/><div><strong>{event}</strong><small>{i===1 ? "涉及阿兰语与诺尔语 · 18 个借词候选" : "历史事件 · 设计预览"}</small></div></div>)}</div>; }
 function IssueList() { return <div className={styles.issueList}>{[["音变规则","3 条规则尚未验证"],["词典","7 个词条缺少来源"],["阶段","失落世纪被标记为无记录"]].map(([group,text])=><button key={text}><ExclamationTriangleIcon aria-hidden="true" /><span><strong>{text}</strong><small>{group}</small></span><ChevronRightIcon aria-hidden="true" /></button>)}</div>; }
 function documentationLabel(value?: PrototypeLanguage["stages"][number]["documentation"]) { return value === "recorded" ? "有记录" : value === "partial" ? "部分记录" : value === "unrecorded" ? "无记录" : value === "reconstructed" ? "重构" : "未设置"; }
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true'], .cm-editor")
+  );
+}
 function errorMessage(reason: unknown): string {
   if (reason instanceof Error) return reason.message;
   if (typeof reason === "object" && reason && "message" in reason) {

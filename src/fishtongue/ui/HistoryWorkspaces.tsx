@@ -279,9 +279,12 @@ function StageEditor(props: {
   const value = props.value;
   const set = <K extends keyof LanguageStage>(key: K, next: LanguageStage[K]) =>
     props.onChange({ ...value, [key]: next });
-  const candidates = props.stages.filter((stage) => stage.id !== value.id);
-  const dataBases = candidates.filter(
+  const candidates = props.stages.filter(
+    (stage) => stage.id !== value.id && stage.kind !== "internal_default"
+  );
+  const dataBases = props.stages.filter(
     (stage) =>
+      stage.id !== value.id &&
       stage.storageMode !== "no_data" &&
       stage.documentationStatus !== "unrecorded"
   );
@@ -3716,7 +3719,7 @@ function emptyStageContext(stageId: string): StageContextRecord {
 function stageOptions(stages: LanguageStage[]) {
   return stages.map((stage) => (
     <option value={stage.id} key={stage.id}>
-      {stage.kind === "internal_default" ? "默认状态" : stage.name} ·{" "}
+      {stage.kind === "internal_default" ? "当前语言数据" : stage.name} ·{" "}
       {period(stage)}
     </option>
   ));

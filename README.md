@@ -1,5 +1,19 @@
 # FishTongue Desktop
 
+## Phase 7.1 结项状态（2026-08-14）
+
+Phase 7 已拆分为七个可独立验收的子阶段，完整安排见
+[`docs/phase-7-development-plan.md`](docs/phase-7-development-plan.md)。Phase 7.1 已通过自动总验收和外部 Windows 人工验收并正式结项。
+
+本阶段新增 Schema v16 项目操作日志，提供跨页面、跨重启的全局撤销/重做，并补齐历史阶段词典覆盖、内部默认状态隐藏、最近阶段选择及跨语言返回状态恢复。自动总验收命令为：
+
+```powershell
+npm run verify:phase7-1
+```
+
+人工验收步骤见
+[`docs/phase-7-1/manual-acceptance-guide.md`](docs/phase-7-1/manual-acceptance-guide.md)。
+
 ## Phase 6 结项状态（2026-08-13）
 
 Phase 3 已通过干净 Windows 外部人工验收并正式结项。Phase 4 的 AI 数据模型位于
@@ -13,7 +27,7 @@ Lexurgy Sidecar 协议已升级为 v2，并加入固定 SplitMix64 v1 种子的�
 当前自动总验收命令为：
 
 ```powershell
-npm run verify:phase5
+npm run verify:phase7-1
 ```
 
 Phase 4 已通过外部 Windows 人工验收并正式结项。已实现多模型 AI 助手、安全上下文读取和结构化提案审核；
@@ -32,7 +46,7 @@ Phase 5 已通过外部 Windows 人工验收并正式结项。Schema v8 为每�
 
 Phase 6 已通过外部 Windows 人工验收并正式结项。本阶段交付了正式音系、独立 PanPhon Analysis Sidecar，以及整合进“词源与接触”的确定性、可选 LLM 和可选 Lexurgy 借词适配；单条和批量借词均执行重复检查，批量重复弹窗允许逐条选择不同词形并固定排除完全重复项。Morfessor、自动语素切分、音韵对应和逆向重构不属于本阶段。详细实施与回归基线见
 [`docs/phase-6-development-plan.md`](docs/phase-6-development-plan.md)。这些分析能力只产生候选或证据，不会自动重建祖语、修改谱系或绕过审核写入正式数据。
-当前 Schema v14 在 v13 正式音系与借词批次基础上补充 AI 借词建议提案兼容；借词工作区会在当前应用会话内记住未提交进度，IPA 分析兼容拉丁小写 `g` 和 IPA 小写 `ɡ`，同时保留用户原始输入。
+Phase 6 最终数据库基线是 Schema v15：v13 建立正式音系与借词批次，v14 补充 AI 借词建议提案兼容，v15 持久化借词证据备注；Phase 7.1 在此基础上升级至 v16。借词工作区会在当前应用会话内记住未提交进度，IPA 分析兼容拉丁小写 `g` 和 IPA 小写 `ɡ`，同时保留用户原始输入。
 
 人工验收提出的 IPA 音位选点、演化词典筛选、候选冲突处理和面向语言学新手的
 离线 `⍰` 帮助要求，统一记录在
@@ -40,7 +54,7 @@ Phase 6 已通过外部 Windows 人工验收并正式结项。本阶段交付了
 
 FishTongue 是面向奇幻世界创作者的开源人造语生成与管理桌面应用。用户安装一个程序，就能在本地创建、保存和演化语言项目；LLM 是可选助手，不是基础功能的运行前提。
 
-> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2、Phase 3、Phase 4、Phase 5 和 Phase 6 均已通过验收。Phase 2 已交付
+> 当前状态：Phase 0、Phase 1、Phase 1.5、Phase 2、Phase 3、Phase 4、Phase 5、Phase 6 和 Phase 7.1 均已通过验收。Phase 2 已交付
 > Lexurgy Sidecar、音变预览、屈折预览和 Schema v2，并通过无系统 Java 的外部
 > Windows 验收。Phase 3 已交付正式词典、语素、确定性造词、候选审核、批量提交
 > 和安全撤销。Phase 4 已交付可选的多模型 AI 助手与安全提案系统。Phase 5 已交付
@@ -271,6 +285,10 @@ fishtongue-analysis  # PanPhon IPA 特征和借词映射分析
 | Phase 7 | 正式发布             | 安装、更新、备份、恢复、完整测试及跨平台构建                |
 
 ## 当前进度
+
+Phase 7 已完成分阶段规划，依次覆盖数据安全、演化收口、标签、词频、JSON 导入、
+离线帮助和正式发布；实施与逐阶段验收基线见
+[`docs/phase-7-development-plan.md`](docs/phase-7-development-plan.md)。
 
 Phase 0 已完成。详细任务、命令、验收证据和风险预案见
 [`docs/phase-0-development-plan.md`](docs/phase-0-development-plan.md)。

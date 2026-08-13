@@ -24,7 +24,6 @@ export type WorkspaceRoute =
   | "map"
   | "reconstruction"
   | "unsafe-scripting"
-  | "global-undo"
   | "glyph-designer";
 
 export interface PrototypeStage {

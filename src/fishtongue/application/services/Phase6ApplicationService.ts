@@ -52,7 +52,7 @@ export default class Phase6ApplicationService implements Phase6Application {
       if (stage.storageMode === "no_data") {
         throw new Error("无记录阶段不能保存音系数据。");
       }
-      await this.stages.saveOverride({
+      await this.history.saveStageOverride({
         id: `${stageId}:phonology`,
         stageId,
         componentType: "phonology",
@@ -69,7 +69,9 @@ export default class Phase6ApplicationService implements Phase6Application {
         updatedAt: now,
       });
     } else {
-      await this.phonology.save({ ...profile, updatedAt: now });
+      await this.runProjectOperation("phonology.save", "保存正式音系", () =>
+        this.phonology.save({ ...profile, updatedAt: now })
+      );
     }
     await this.changed();
   }
@@ -82,7 +84,9 @@ export default class Phase6ApplicationService implements Phase6Application {
     if (value.sourceLanguageId === value.targetLanguageId) {
       throw new Error("来源语言与目标语言不能相同。");
     }
-    await this.profiles.save(value);
+    await this.runProjectOperation("borrowing-profile.save", `保存借词方案“${value.name}”`, () =>
+      this.profiles.save(value)
+    );
     await this.changed();
   }
 
@@ -91,7 +95,9 @@ export default class Phase6ApplicationService implements Phase6Application {
   }
 
   async saveBorrowingCandidate(value: BorrowingCandidate) {
-    await this.batches.saveCandidate(value);
+    await this.runProjectOperation("borrowing-review.edit", "修改借词审核候选", () =>
+      this.batches.saveCandidate(value)
+    );
     await this.changed();
   }
 
@@ -218,14 +224,28 @@ export default class Phase6ApplicationService implements Phase6Application {
     ) {
       throw new Error("批量借词中有来源词已建立过借词关系，请确认后再保存。");
     }
-    const result = await this.adaptation.commit(batchId, candidateIds);
+    const result = await this.runProjectOperation("borrowing.commit", "提交借词审核结果", () =>
+      this.adaptation.commit(batchId, candidateIds)
+    );
     await this.changed();
     return result;
   }
 
   async discardBorrowing(batchId: string) {
-    await this.batches.discard(batchId, new Date().toISOString());
+    await this.runProjectOperation("borrowing-review.discard", "关闭借词审核批次", () =>
+      this.batches.discard(batchId, new Date().toISOString())
+    );
     await this.changed();
+  }
+
+  private runProjectOperation<T>(
+    kind: string,
+    summary: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    return this.history.runProjectOperation
+      ? this.history.runProjectOperation(kind, summary, action)
+      : action();
   }
 }
 

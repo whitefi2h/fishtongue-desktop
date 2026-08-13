@@ -46,6 +46,7 @@ import {
 } from "@/fishtongue/infrastructure/Phase6Repositories";
 import TauriPhonologyAnalysisAdapter from "@/fishtongue/infrastructure/TauriPhonologyAnalysisAdapter";
 import BorrowingAdaptationService from "@/fishtongue/application/services/BorrowingAdaptationService";
+import TauriProjectHistoryAdapter from "@/fishtongue/infrastructure/TauriProjectHistoryAdapter";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -78,7 +79,8 @@ function createProjectApplication(database: TauriDatabaseSession): ProjectSessio
     new SqliteWordGenerationProfileRepository(database),
     new SqliteConceptListRepository(database),
     new SqliteGenerationBatchRepository(database),
-    new TauriRecentProjectStore()
+    new TauriRecentProjectStore(),
+    new TauriProjectHistoryAdapter()
   );
 }
 

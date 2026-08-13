@@ -1,5 +1,12 @@
 # FishTongue Agent Instructions
 
+## Phase 7.1 结项状态
+
+- Phase 7.1 已于 2026-08-14 通过外部 Windows 人工验收并正式结项；计划见 `docs/phase-7-development-plan.md`，验收基线见 `docs/phase-7-1/`。
+- 当前数据库版本是 v16：v15 是 Phase 6 的借词证据备注迁移，v16 建立项目操作日志和持久化撤销/重做。
+- 正式写入必须接入统一项目操作协议；撤销/重做必须原子、可冲突检测、重启后可用，新操作清空重做栈，最多保留最近 100 条。
+- 历史阶段词典编辑必须形成当前阶段覆盖，不得修改来源阶段；内部默认状态不得进入普通导航，`no_data` 阶段继续拒绝语言数据。
+
 ## Phase 6 结项状态
 
 - Phase 5 已于 2026-08-09 通过外部 Windows 人工验收并结项；Phase 6 已于 2026-08-13 通过外部 Windows 人工验收并正式结项。
@@ -15,7 +22,7 @@
 - Phase 5 的时间父级与数据基础是两个独立关系；无记录阶段固定使用 `no_data`。
 - Phase 5 总验收与外部人工验收均已通过；回归命令是 `npm run verify:phase5`。
 - Phase 6 已结项，规划与验收基线见 `docs/phase-6-development-plan.md`；本阶段不做 Morfessor、自动语素切分、音韵对应或逆向重构。Analysis Sidecar 只产生候选和证据，不得自动重建祖语、修改谱系或绕过审核写入正式数据。
-- Phase 6 当前数据库版本是 v14：v13 建立正式音系和借词审核数据，v14 允许持久化 `borrowing_adaptation.suggest` 安全提案。IPA 分析边界将拉丁小写 `g` 兼容映射为 IPA 小写 `ɡ`，但不得改写用户保存的词形或显示文本。
+- Phase 6 最终数据库版本是 v15：v13 建立正式音系和借词审核数据，v14 允许持久化 `borrowing_adaptation.suggest` 安全提案，v15 持久化借词证据备注。IPA 分析边界将拉丁小写 `g` 兼容映射为 IPA 小写 `ɡ`，但不得改写用户保存的词形或显示文本。
 - Phase 4 必须保持 AI 默认只读；任何正式修改都要经过结构化提案、验证、差异预览和用户确认。
 - API Key 只存 Windows 凭据管理器，不得进入项目、SQLite、Store 明文、日志或测试夹具。
 

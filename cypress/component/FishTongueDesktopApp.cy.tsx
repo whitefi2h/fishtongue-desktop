@@ -28,6 +28,7 @@ class TestApplication implements ProjectApplication {
   lexemes: Lexeme[] = [];
   closes = 0;
   abandons = 0;
+  onUndo?: () => void;
   async createProject(name: string) {
     const now = new Date().toISOString();
     this.writes += 1;
@@ -116,6 +117,12 @@ class TestApplication implements ProjectApplication {
   async saveEvolution() { throw new Error("prototype must not persist"); }
   async getInflectionSystem(): Promise<InflectionSystem> { throw new Error("prototype must not persist"); }
   async saveInflectionSystem() { throw new Error("prototype must not persist"); }
+  async runProjectOperation<T>(_kind: string, _summary: string, action: () => Promise<T>) { return action(); }
+  async undoProjectOperation() {
+    this.onUndo?.();
+    return { id: "undo", summary: "测试操作" };
+  }
+  async redoProjectOperation() { return null; }
   getSnapshot() { return this.snapshot; }
 }
 
@@ -246,6 +253,118 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("input[name='lexeme-romanized']").should("have.value", "");
     cy.contains("tr", "ama").find("td").eq(2).click();
     cy.get("input[name='lexeme-romanized']").should("have.value", "ama");
+  });
+
+  it("refreshes the active history workspace immediately after global undo", () => {
+    const app = new TestApplication();
+    const now = "2026-08-14T00:00:00.000Z";
+    let events = [{
+      id: "event", projectId: "p1", name: "迁徙事件", eventType: "migration" as const,
+      startLabel: "100", endLabel: "", description: "", position: 0,
+      participants: [], createdAt: now, updatedAt: now,
+    }];
+    const history = {
+      ...historyApplicationFixture(),
+      listHistoricalEvents: async () => structuredClone(events),
+    } as Phase5Application;
+    app.onUndo = () => { events = []; };
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} historyApplication={history} />);
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("刷新测试");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("测试语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.get("[aria-label='应用菜单']").contains("button", "项目").click();
+    cy.get("[role='menu']").contains("button", "历史事件").click();
+    cy.contains("迁徙事件").should("be.visible");
+    cy.get("[aria-label='应用菜单']").contains("button", "编辑").click();
+    cy.get("[role='menu']").contains("button", "撤销").click();
+    cy.contains("还没有历史事件").should("be.visible");
+    cy.contains("迁徙事件").should("not.exist");
+  });
+
+  it("selects the first visible historical stage when entering a staged language", () => {
+    const app = new TestApplication();
+    const fixture = historyApplicationFixture();
+    let stageReads = 0;
+    const history = {
+      ...fixture,
+      listStages: async (languageId: string) => {
+        stageReads += 1;
+        return fixture.listStages(languageId);
+      },
+    } as Phase5Application;
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} historyApplication={history} />);
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("阶段入口测试");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("有阶段语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.get("[aria-label='当前位置']")
+      .should("contain.text", "古典期")
+      .and("not.contain.text", "默认状态");
+    cy.get("[aria-label='当前位置']").contains("button", "有阶段语言").click();
+    cy.get("[role='menu']").contains("button", "有阶段语言").click();
+    cy.wrap(null).should(() => expect(stageReads).to.equal(2));
+    cy.get("[aria-label='当前位置']")
+      .should("contain.text", "古典期")
+      .and("not.contain.text", "默认状态");
+  });
+
+  it("ends a failed stage load and lets the user retry", () => {
+    const app = new TestApplication();
+    const fixture = historyApplicationFixture();
+    let stageReads = 0;
+    const history = {
+      ...fixture,
+      listStages: async (languageId: string) => {
+        stageReads += 1;
+        if (stageReads === 1) throw new Error("数据库暂时不可用");
+        return fixture.listStages(languageId);
+      },
+    } as Phase5Application;
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} historyApplication={history} />);
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("阶段失败测试");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("重试语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.get("[aria-label='当前位置']").contains("button", "阶段读取失败").click();
+    cy.get("[role='menu']").contains("数据库暂时不可用").should("be.visible");
+    cy.get("[role='menu']").contains("button", "重新读取阶段").click();
+    cy.wrap(null).should(() => expect(stageReads).to.equal(2));
+    cy.get("[aria-label='当前位置']").should("contain.text", "古典期");
+  });
+
+  it("stops waiting when stage loading times out", () => {
+    cy.clock();
+    const app = new TestApplication();
+    const fixture = historyApplicationFixture();
+    const history = {
+      ...fixture,
+      listStages: async () => new Promise<never>(() => undefined),
+    } as Phase5Application;
+    cy.mount(<FishTongueDesktopApp application={app} windowPort={new TestWindowPort()} historyApplication={history} />);
+    cy.contains("新建项目").click();
+    cy.get("input[name='project-name']").clear().type("阶段超时测试");
+    cy.contains("button", "创建并选择位置").click();
+    cy.contains("button", "创建第一门语言").click();
+    cy.get("input[name='language-name']").clear().type("超时语言");
+    cy.contains("button", "进入语言工作区").click();
+    cy.get("[aria-label='当前位置']")
+      .should("contain.text", "默认状态")
+      .and("not.contain.text", "正在读取阶段…");
+    cy.get("[aria-label='当前位置']").contains("button", "超时语言").click();
+    cy.get("[role='menu']").contains("button", "超时语言").click();
+    cy.get("[aria-label='当前位置']").should("contain.text", "正在读取阶段…");
+    cy.tick(3_001);
+    cy.get("[aria-label='当前位置']")
+      .should("contain.text", "阶段读取失败")
+      .and("not.contain.text", "正在读取阶段…");
+    cy.contains("阶段读取超时；可在阶段菜单中重新读取。").should("be.visible");
   });
 
   it("closes the active project before the custom title-bar closes the window", () => {

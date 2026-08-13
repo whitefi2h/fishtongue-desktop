@@ -40,6 +40,7 @@ export type EtymologyDeletionMode =
   | "relation_and_target_lexeme";
 
 export interface Phase5Application {
+  runProjectOperation?<T>(kind: string, summary: string, action: () => Promise<T>): Promise<T>;
   listStages(languageId: string): Promise<LanguageStage[]>;
   saveStage(stage: LanguageStage): Promise<void>;
   saveStageWithContext(
@@ -51,6 +52,7 @@ export interface Phase5Application {
   saveStageContext(context: StageContextRecord): Promise<void>;
   saveStageOverride(value: StageComponentOverride): Promise<void>;
   deleteStageOverride(id: string): Promise<void>;
+  listStageOverrides?(stageId: string): Promise<StageComponentOverride[]>;
   resolveStage(stageId: string): Promise<ResolvedStageState>;
 
   listLanguageRelations(): Promise<LanguageRelation[]>;

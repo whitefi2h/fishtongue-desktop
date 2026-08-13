@@ -2,6 +2,7 @@ import ProjectSessionService from "@/fishtongue/application/services/ProjectSess
 import {
   DatabaseSessionPort,
   ProjectFilePort,
+  ProjectHistoryPort,
   RecentProjectStore,
 } from "@/fishtongue/application/ports/ProjectPorts";
 import {
@@ -71,10 +72,23 @@ class MemoryRecent implements RecentProjectStore {
   remove = async (path: string) => { this.values = this.values.filter((item) => item.path !== path); };
 }
 
-function createService() {
+class FakeHistory implements ProjectHistoryPort {
+  begun: string[] = [];
+  completed: string[] = [];
+  aborted: string[] = [];
+  begin = async (input: { id: string }) => { this.begun.push(input.id); };
+  complete = async (id: string) => { this.completed.push(id); return true; };
+  abort = async (id: string) => { this.aborted.push(id); };
+  undo = async () => null;
+  redo = async () => null;
+  recoverPending = async () => 0;
+}
+
+function createService(withHistory = false) {
   const files = new FakeFiles();
   const database = new FakeDatabase();
   const projects = new MemoryProjectRepository();
+  const history = new FakeHistory();
   const service = new ProjectSessionService(
     files,
     database,
@@ -87,9 +101,10 @@ function createService() {
     new MemoryWordGenerationProfileRepository(),
     new MemoryConceptListRepository(),
     new MemoryGenerationBatchRepository(),
-    new MemoryRecent()
+    new MemoryRecent(),
+    withHistory ? history : undefined
   );
-  return { service, files, database, projects };
+  return { service, files, database, projects, history };
 }
 
 function clone<T>(value: T): T {
@@ -116,6 +131,29 @@ describe("ProjectSessionService", () => {
       "祖语甲", "祖语乙", "后续语言甲", "后续语言乙",
     ]);
     expect(languages.every((language) => !("type" in language))).toBe(true);
+  });
+
+  it("wraps a formal write in one persistent project operation", async () => {
+    const { service, history } = createService(true);
+    await service.createProject("测试项目");
+
+    await service.createLanguage("新语言");
+
+    expect(history.begun).toHaveLength(1);
+    expect(history.completed).toEqual(history.begun);
+    expect(history.aborted).toEqual([]);
+  });
+
+  it("aborts and restores a failed project operation", async () => {
+    const { service, history } = createService(true);
+    await service.createProject("测试项目");
+
+    await expect(service.runProjectOperation("test", "失败操作", async () => {
+      throw new Error("write failed");
+    })).rejects.toThrow("write failed");
+
+    expect(history.aborted).toEqual(history.begun);
+    expect(history.completed).toEqual([]);
   });
 
   it("rejects a lexeme without a non-empty Sense", async () => {

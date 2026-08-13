@@ -564,6 +564,11 @@ export interface RecentProject {
   lastOpenedAt: UtcTimestamp;
 }
 
+export interface ProjectOperationResult {
+  id: string;
+  summary: string;
+}
+
 export type AiProviderKind =
   | "openai"
   | "gemini"

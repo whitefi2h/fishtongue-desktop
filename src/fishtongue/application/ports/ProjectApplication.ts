@@ -12,6 +12,7 @@ import {
   ProjectSession,
   RecentProject,
   RecoveryCandidate,
+  ProjectOperationResult,
   WordGenerationProfile,
 } from "@/fishtongue/domain/models";
 
@@ -66,4 +67,7 @@ export interface ProjectApplication {
   saveInflectionSystem(system: InflectionSystem): Promise<void>;
   getSnapshot(): ProjectSnapshot | null;
   markProjectChanged(): Promise<void>;
+  runProjectOperation<T>(kind: string, summary: string, action: () => Promise<T>): Promise<T>;
+  undoProjectOperation(): Promise<ProjectOperationResult | null>;
+  redoProjectOperation(): Promise<ProjectOperationResult | null>;
 }

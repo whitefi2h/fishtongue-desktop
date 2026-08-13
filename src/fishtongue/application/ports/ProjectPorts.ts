@@ -13,6 +13,7 @@ import {
   ProjectSession,
   RecentProject,
   RecoveryCandidate,
+  ProjectOperationResult,
   EtymologyRelation,
   HistoricalEvent,
   LanguageRelation,
@@ -41,6 +42,21 @@ export interface DatabaseSessionPort {
   close(): Promise<void>;
   select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
   execute(query: string, bindValues?: unknown[]): Promise<number>;
+}
+
+export interface ProjectHistoryPort {
+  begin(input: {
+    id: string;
+    projectId: string;
+    kind: string;
+    summary: string;
+    createdAt: string;
+  }): Promise<void>;
+  complete(operationId: string): Promise<boolean>;
+  abort(operationId: string): Promise<void>;
+  undo(projectId: string, changedAt: string): Promise<ProjectOperationResult | null>;
+  redo(projectId: string, changedAt: string): Promise<ProjectOperationResult | null>;
+  recoverPending(): Promise<number>;
 }
 
 export interface ProjectRepository {

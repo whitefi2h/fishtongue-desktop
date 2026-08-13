@@ -37,6 +37,12 @@ export default class HistoryApplicationService implements Phase5Application {
     private readonly resolver: StageStateResolver
   ) {}
 
+  runProjectOperation<T>(kind: string, summary: string, action: () => Promise<T>) {
+    return this.project.runProjectOperation
+      ? this.project.runProjectOperation(kind, summary, action)
+      : action();
+  }
+
   listStages(languageId: string) {
     this.requireProject();
     return this.stages.list(languageId);
@@ -46,7 +52,9 @@ export default class HistoryApplicationService implements Phase5Application {
     this.requireProject();
     const existing = await this.stages.list(value.languageId);
     assertStageLinks(value, existing);
-    await this.stages.save(normalizeStage(value));
+    await this.runProjectOperation("stage.save", `保存阶段“${value.name}”`, () =>
+      this.stages.save(normalizeStage(value))
+    );
     await this.project.markProjectChanged();
   }
 
@@ -60,9 +68,11 @@ export default class HistoryApplicationService implements Phase5Application {
     }
     const existing = await this.stages.list(value.languageId);
     assertStageLinks(value, existing);
-    await this.stages.saveWithContext(
-      normalizeStage(value),
-      normalizeStageContext(context)
+    await this.runProjectOperation("stage.save", `保存阶段“${value.name}”及说明`, () =>
+      this.stages.saveWithContext(
+        normalizeStage(value),
+        normalizeStageContext(context)
+      )
     );
     await this.project.markProjectChanged();
   }
@@ -74,7 +84,9 @@ export default class HistoryApplicationService implements Phase5Application {
     if (value.kind === "internal_default") {
       throw new Error("内部默认状态是语言数据的安全锚点，不能删除。");
     }
-    await this.stages.delete(id);
+    await this.runProjectOperation("stage.delete", `删除阶段“${value.name}”`, () =>
+      this.stages.delete(id)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -85,7 +97,9 @@ export default class HistoryApplicationService implements Phase5Application {
 
   async saveStageContext(value: StageContextRecord): Promise<void> {
     this.requireProject();
-    await this.stages.saveContext(normalizeStageContext(value));
+    await this.runProjectOperation("stage-context.save", "修改阶段说明", () =>
+      this.stages.saveContext(normalizeStageContext(value))
+    );
     await this.project.markProjectChanged();
   }
 
@@ -96,17 +110,22 @@ export default class HistoryApplicationService implements Phase5Application {
     if (stage.storageMode === "no_data") {
       throw new Error("无记录阶段不能保存词典、语素或规则数据。");
     }
-    await this.stages.saveOverride({
+    const normalized = {
       ...value,
       targetId: value.targetId.trim(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("stage-override.save", "修改阶段数据差异", () =>
+      this.stages.saveOverride(normalized)
+    );
     await this.project.markProjectChanged();
   }
 
   async deleteStageOverride(id: string): Promise<void> {
     this.requireProject();
-    await this.stages.deleteOverride(id);
+    await this.runProjectOperation("stage-override.delete", "删除阶段数据差异", () =>
+      this.stages.deleteOverride(id)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -135,19 +154,24 @@ export default class HistoryApplicationService implements Phase5Application {
     )) {
       throw new Error("目标语言已经有一个主要继承来源。请先删除或调整原关系。");
     }
-    await this.relations.save({
+    const normalized = {
       ...value,
       projectId: snapshot.project.id,
       isPrimary: value.kind === "genetic" && value.isPrimary,
       notes: value.notes.trim(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("language-relation.save", "保存语言关系", () =>
+      this.relations.save(normalized)
+    );
     await this.project.markProjectChanged();
   }
 
   async deleteLanguageRelation(id: string): Promise<void> {
     this.requireProject();
-    await this.relations.delete(id);
+    await this.runProjectOperation("language-relation.delete", "删除语言关系", () =>
+      this.relations.delete(id)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -157,19 +181,24 @@ export default class HistoryApplicationService implements Phase5Application {
 
   async saveHistoricalEvent(value: HistoricalEvent): Promise<void> {
     const snapshot = this.requireProject();
-    await this.events.save({
+    const normalized = {
       ...value,
       projectId: snapshot.project.id,
       name: requiredText(value.name, "事件名称"),
       description: value.description.trim(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("historical-event.save", `保存历史事件“${normalized.name}”`, () =>
+      this.events.save(normalized)
+    );
     await this.project.markProjectChanged();
   }
 
   async deleteHistoricalEvent(id: string): Promise<void> {
     this.requireProject();
-    await this.events.delete(id);
+    await this.runProjectOperation("historical-event.delete", "删除历史事件", () =>
+      this.events.delete(id)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -180,6 +209,11 @@ export default class HistoryApplicationService implements Phase5Application {
   listEtymologyForLexeme(lexemeId: string) {
     this.requireProject();
     return this.etymology.listForLexeme(lexemeId);
+  }
+
+  listStageOverrides(stageId: string) {
+    this.requireProject();
+    return this.stages.listOverrides(stageId);
   }
 
   async checkEtymologyDuplicate(
@@ -270,13 +304,16 @@ export default class HistoryApplicationService implements Phase5Application {
     ) {
       throw new Error("该来源词已有其他借词词形，请确认后再保存。");
     }
-    await this.etymology.save({
+    const normalized = {
       ...value,
       projectId: snapshot.project.id,
       sourceForm: value.sourceForm.trim(),
       notes: value.notes.trim(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("etymology.save", "保存词源关系", () =>
+      this.etymology.save(normalized)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -296,7 +333,9 @@ export default class HistoryApplicationService implements Phase5Application {
       await this.project.deleteLexeme(relation.targetLexemeId);
       return;
     }
-    await this.etymology.delete(id);
+    await this.runProjectOperation("etymology.delete", "删除词源关系", () =>
+      this.etymology.delete(id)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -322,7 +361,7 @@ export default class HistoryApplicationService implements Phase5Application {
       throw new Error("无记录阶段不能接收音变结果。");
     }
     if (!value.candidates.length) throw new Error("没有可审核的音变结果。");
-    await this.stageEvolutions.create({
+    const normalized: StageEvolutionBatch = {
       ...value,
       status: "draft",
       rulesSnapshot: value.rulesSnapshot.trim(),
@@ -330,7 +369,10 @@ export default class HistoryApplicationService implements Phase5Application {
         ...candidate,
         position,
       })),
-    });
+    };
+    await this.runProjectOperation("stage-evolution-review.create", "创建跨阶段演化审核批次", () =>
+      this.stageEvolutions.create(normalized)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -350,7 +392,7 @@ export default class HistoryApplicationService implements Phase5Application {
       candidate.resultForm.normalize("NFC").toLocaleLowerCase() ===
         resultForm.normalize("NFC").toLocaleLowerCase()
     );
-    await this.stageEvolutions.saveCandidate(batchId, {
+    const normalized: StageEvolutionCandidate = {
       ...value,
       resultForm,
       payload: { ...value.payload, romanized: resultForm },
@@ -358,7 +400,10 @@ export default class HistoryApplicationService implements Phase5Application {
         code: "DUPLICATE_CANDIDATE",
         message: "本批次中存在相同的结果词形。",
       }] : [],
-    });
+    };
+    await this.runProjectOperation("stage-evolution-review.edit", "修改跨阶段演化候选", () =>
+      this.stageEvolutions.saveCandidate(batchId, normalized)
+    );
     await this.project.markProjectChanged();
   }
 
@@ -371,7 +416,9 @@ export default class HistoryApplicationService implements Phase5Application {
     if (accepted.some((value) => value.conflicts.length)) {
       throw new Error("已接受的结果仍有冲突，请先处理。");
     }
-    await this.stageEvolutions.commit(batchId, crypto.randomUUID(), new Date().toISOString());
+    await this.runProjectOperation("stage-evolution.commit", "提交跨阶段演化结果", () =>
+      this.stageEvolutions.commit(batchId, crypto.randomUUID(), new Date().toISOString())
+    );
     await this.project.markProjectChanged();
   }
 
@@ -382,7 +429,9 @@ export default class HistoryApplicationService implements Phase5Application {
 
   async undoStageEvolutionOperation(operationId: string): Promise<void> {
     this.requireProject();
-    await this.stageEvolutions.undo(operationId, new Date().toISOString());
+    await this.runProjectOperation("stage-evolution.undo", "撤销跨阶段演化提交", () =>
+      this.stageEvolutions.undo(operationId, new Date().toISOString())
+    );
     await this.project.markProjectChanged();
   }
 

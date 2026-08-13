@@ -10,6 +10,7 @@ import {
   MorphemeRepository,
   ProjectFilePort,
   ProjectRepository,
+  ProjectHistoryPort,
   RecentProjectStore,
   WordGenerationProfileRepository,
 } from "@/fishtongue/application/ports/ProjectPorts";
@@ -38,6 +39,7 @@ export default class ProjectSessionService implements ProjectApplication {
   private snapshot: ProjectSnapshot | null = null;
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private saveQueue: Promise<unknown> = Promise.resolve();
+  private operationDepth = 0;
 
   constructor(
     private readonly files: ProjectFilePort,
@@ -51,7 +53,8 @@ export default class ProjectSessionService implements ProjectApplication {
     private readonly generationProfiles: WordGenerationProfileRepository,
     private readonly conceptLists: ConceptListRepository,
     private readonly generationBatches: GenerationBatchRepository,
-    private readonly recentProjects: RecentProjectStore
+    private readonly recentProjects: RecentProjectStore,
+    private readonly history?: ProjectHistoryPort
   ) {}
 
   getSnapshot(): ProjectSnapshot | null {
@@ -60,6 +63,62 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async markProjectChanged(): Promise<void> {
     await this.changed(this.requireSnapshot());
+  }
+
+  async runProjectOperation<T>(
+    kind: string,
+    summary: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    const current = this.requireSnapshot();
+    if (this.operationDepth > 0 || !this.history) return action();
+    const operationId = uuid();
+    await this.history.begin({
+      id: operationId,
+      projectId: current.project.id,
+      kind,
+      summary,
+      createdAt: new Date().toISOString(),
+    });
+    this.operationDepth += 1;
+    try {
+      const result = await action();
+      await this.history.complete(operationId);
+      return result;
+    } catch (error) {
+      try {
+        await this.history.abort(operationId);
+      } catch (abortError) {
+        throw new Error(
+          `操作失败，自动恢复也未完成：${errorMessage(error)}；${errorMessage(abortError)}`
+        );
+      }
+      throw error;
+    } finally {
+      this.operationDepth -= 1;
+    }
+  }
+
+  async undoProjectOperation() {
+    const current = this.requireSnapshot();
+    if (!this.history) return null;
+    const result = await this.history.undo(current.project.id, new Date().toISOString());
+    if (result) {
+      const languages = await this.languages.list(current.project.id);
+      await this.changed({ ...this.requireSnapshot(), languages });
+    }
+    return result;
+  }
+
+  async redoProjectOperation() {
+    const current = this.requireSnapshot();
+    if (!this.history) return null;
+    const result = await this.history.redo(current.project.id, new Date().toISOString());
+    if (result) {
+      const languages = await this.languages.list(current.project.id);
+      await this.changed({ ...this.requireSnapshot(), languages });
+    }
+    return result;
   }
 
   async createProject(name: string): Promise<ProjectSnapshot | null> {
@@ -165,7 +224,9 @@ export default class ProjectSessionService implements ProjectApplication {
       createdAt: now,
       updatedAt: now,
     };
-    await this.languages.create(language);
+    await this.runProjectOperation("language.create", `创建语言“${language.name}”`, () =>
+      this.languages.create(language)
+    );
     await this.changed({
       ...current,
       languages: [...current.languages, language],
@@ -177,7 +238,9 @@ export default class ProjectSessionService implements ProjectApplication {
     const current = this.requireSnapshot();
     const normalizedName = requiredText(name, "语言名称");
     const updatedAt = new Date().toISOString();
-    await this.languages.rename(id, normalizedName, updatedAt);
+    await this.runProjectOperation("language.rename", `重命名语言为“${normalizedName}”`, () =>
+      this.languages.rename(id, normalizedName, updatedAt)
+    );
     await this.changed({
       ...current,
       languages: current.languages.map((language) =>
@@ -191,7 +254,9 @@ export default class ProjectSessionService implements ProjectApplication {
   async saveLanguageProfile(id: string, profile: NonNullable<Language["profile"]>): Promise<void> {
     const current = this.requireSnapshot();
     const updatedAt = new Date().toISOString();
-    await this.languages.updateProfile(id, profile, updatedAt);
+    await this.runProjectOperation("language.profile", "修改语言基本属性", () =>
+      this.languages.updateProfile(id, profile, updatedAt)
+    );
     await this.changed({
       ...current,
       languages: current.languages.map((language) =>
@@ -202,7 +267,10 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async deleteLanguage(id: string): Promise<void> {
     const current = this.requireSnapshot();
-    await this.languages.delete(id);
+    const language = current.languages.find((value) => value.id === id);
+    await this.runProjectOperation("language.delete", `删除语言“${language?.name ?? id}”`, () =>
+      this.languages.delete(id)
+    );
     await this.changed({
       ...current,
       languages: current.languages.filter((language) => language.id !== id),
@@ -225,7 +293,7 @@ export default class ProjectSessionService implements ProjectApplication {
       definition: requiredText(sense.definition, "词义"),
       position,
     }));
-    await this.lexemes.save({
+    const normalized: Lexeme = {
       ...lexeme,
       romanized,
       ipa: lexeme.ipa.trim(),
@@ -235,13 +303,18 @@ export default class ProjectSessionService implements ProjectApplication {
       senses,
       morphemes: lexeme.morphemes.map((value, position) => ({ ...value, position })),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation(
+      "lexeme.save",
+      `${lexeme.createdAt === lexeme.updatedAt ? "创建" : "修改"}词条“${romanized}”`,
+      () => this.lexemes.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteLexeme(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.lexemes.delete(id);
+    await this.runProjectOperation("lexeme.delete", "删除词条", () => this.lexemes.delete(id));
     await this.changed(this.requireSnapshot());
   }
 
@@ -252,7 +325,7 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async saveEvolution(evolution: Evolution): Promise<void> {
     this.requireSnapshot();
-    await this.evolutions.save({
+    const normalized = {
       ...evolution,
       updatedAt: new Date().toISOString(),
       testWords: evolution.testWords.map((word, position) => ({
@@ -260,7 +333,10 @@ export default class ProjectSessionService implements ProjectApplication {
         word: word.word.trim(),
         position,
       })),
-    });
+    };
+    await this.runProjectOperation("evolution.save", "修改演化草稿", () =>
+      this.evolutions.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -271,20 +347,23 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async saveMorpheme(value: Morpheme): Promise<void> {
     this.requireSnapshot();
-    await this.morphemes.save({
+    const normalized = {
       ...value,
       form: requiredText(value.form, "语素形式"),
       meaning: requiredText(value.meaning, "语素含义"),
       applicablePartOfSpeech: value.applicablePartOfSpeech.trim(),
       notes: value.notes.trim(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("morpheme.save", `保存语素“${normalized.form}”`, () =>
+      this.morphemes.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteMorpheme(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.morphemes.delete(id);
+    await this.runProjectOperation("morpheme.delete", "删除语素", () => this.morphemes.delete(id));
     await this.changed(this.requireSnapshot());
   }
 
@@ -295,18 +374,23 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async saveWordGenerationProfile(value: WordGenerationProfile): Promise<void> {
     this.requireSnapshot();
-    await this.generationProfiles.save({
+    const normalized: WordGenerationProfile = {
       ...value,
       name: requiredText(value.name, "造词配置名称"),
       configVersion: "wordgen-profile-v1",
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("wordgen-profile.save", `保存造词配置“${normalized.name}”`, () =>
+      this.generationProfiles.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteWordGenerationProfile(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.generationProfiles.delete(id);
+    await this.runProjectOperation("wordgen-profile.delete", "删除造词配置", () =>
+      this.generationProfiles.delete(id)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -318,7 +402,7 @@ export default class ProjectSessionService implements ProjectApplication {
   async saveConceptList(value: ConceptList): Promise<void> {
     const current = this.requireSnapshot();
     if (value.readonly) throw new Error("内置概念表不能修改。");
-    await this.conceptLists.save({
+    const normalized = {
       ...value,
       projectId: current.project.id,
       name: requiredText(value.name, "概念表名称"),
@@ -328,13 +412,18 @@ export default class ProjectSessionService implements ProjectApplication {
         position,
       })),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await this.runProjectOperation("concept-list.save", `保存概念表“${normalized.name}”`, () =>
+      this.conceptLists.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteConceptList(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.conceptLists.delete(id);
+    await this.runProjectOperation("concept-list.delete", "删除概念表", () =>
+      this.conceptLists.delete(id)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -346,7 +435,9 @@ export default class ProjectSessionService implements ProjectApplication {
   async createGenerationBatch(value: GenerationBatch): Promise<void> {
     this.requireSnapshot();
     if (!value.candidates.length) throw new Error("没有可审核的候选。");
-    await this.generationBatches.create(value);
+    await this.runProjectOperation("generation-review.create", "创建造词审核批次", () =>
+      this.generationBatches.create(value)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -371,12 +462,15 @@ export default class ProjectSessionService implements ProjectApplication {
     )) {
       conflicts.push({ code: "DUPLICATE_CANDIDATE", message: "本批次中存在相同词形。" });
     }
-    await this.generationBatches.saveCandidate(batchId, {
+    const normalized = {
       ...value,
       conflicts,
       gloss: requiredText(value.gloss, "候选释义"),
       romanized: requiredText(value.romanized, "候选词形"),
-    });
+    };
+    await this.runProjectOperation("generation-review.edit", "修改造词审核候选", () =>
+      this.generationBatches.saveCandidate(batchId, normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -395,7 +489,9 @@ export default class ProjectSessionService implements ProjectApplication {
     if (values.some((candidate) => !editableIds.has(candidate.id))) {
       throw new Error("已提交候选不能再次修改。");
     }
-    await this.generationBatches.saveCandidates(batchId, values);
+    await this.runProjectOperation("generation-review.edit", "批量修改造词审核候选", () =>
+      this.generationBatches.saveCandidates(batchId, values)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -408,7 +504,9 @@ export default class ProjectSessionService implements ProjectApplication {
     if (accepted.some((candidate) => candidate.conflicts.length > 0)) {
       throw new Error("已接受候选中仍有冲突，请先修改词形或取消接受。");
     }
-    await this.generationBatches.commit(batchId, uuid(), new Date().toISOString());
+    await this.runProjectOperation("generation.commit", "提交造词审核结果", () =>
+      this.generationBatches.commit(batchId, uuid(), new Date().toISOString())
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -416,7 +514,9 @@ export default class ProjectSessionService implements ProjectApplication {
     this.requireSnapshot();
     const batch = await this.generationBatches.get(batchId);
     if (!batch) throw new Error("审核批次不存在。");
-    await this.generationBatches.dismiss(batchId, new Date().toISOString());
+    await this.runProjectOperation("generation-review.dismiss", "关闭造词审核批次", () =>
+      this.generationBatches.dismiss(batchId, new Date().toISOString())
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -427,7 +527,9 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async undoLexiconBatchOperation(operationId: string): Promise<void> {
     this.requireSnapshot();
-    await this.generationBatches.undo(operationId, new Date().toISOString());
+    await this.runProjectOperation("generation.undo", "撤销造词批量提交", () =>
+      this.generationBatches.undo(operationId, new Date().toISOString())
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -438,7 +540,7 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async saveInflectionSystem(system: InflectionSystem): Promise<void> {
     this.requireSnapshot();
-    await this.inflections.save({
+    const normalized = {
       ...system,
       rulesVersion: 1,
       updatedAt: new Date().toISOString(),
@@ -447,12 +549,16 @@ export default class ProjectSessionService implements ProjectApplication {
         stem: requiredText(testCase.stem, "词干"),
         position,
       })),
-    });
+    };
+    await this.runProjectOperation("inflection.save", "修改屈折系统", () =>
+      this.inflections.save(normalized)
+    );
     await this.changed(this.requireSnapshot());
   }
 
   private async loadSession(session: ProjectSession): Promise<ProjectSnapshot> {
     await this.database.open();
+    await this.history?.recoverPending();
     const project = await this.projects.get(session.manifest.projectId);
     if (!project) {
       await this.database.close();
@@ -549,4 +655,8 @@ export default class ProjectSessionService implements ProjectApplication {
     if (!this.snapshot) throw new Error("当前没有打开的项目。");
     return this.snapshot;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
