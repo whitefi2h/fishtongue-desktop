@@ -1,6 +1,6 @@
 # FishTongue Phase 7：分阶段开发与正式发布计划
 
-> 计划状态：执行中。Phase 7.1 已于 2026-08-14 通过外部 Windows 人工验收并正式结项；Phase 7.2 尚未开始开发。后续开发不得改写 Phase 1～7.1 已验收语义。
+> 计划状态：执行中。Phase 7.1 已于 2026-08-14 通过外部 Windows 人工验收并正式结项；Phase 7.2 已完成开发前界面与功能规划，尚未开始代码开发，详见 `docs/phase-7-2/evolution-workspace-plan.md`。后续开发不得改写 Phase 1～7.1 已验收语义。
 
 ## 1. 为什么重新拆分
 
