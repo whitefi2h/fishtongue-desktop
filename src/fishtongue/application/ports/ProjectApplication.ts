@@ -39,7 +39,10 @@ export interface ProjectApplication {
   listLanguages(): Promise<Language[]>;
   createLanguage(name: string): Promise<Language>;
   renameLanguage(id: string, name: string): Promise<void>;
-  saveLanguageProfile?(id: string, profile: NonNullable<Language["profile"]>): Promise<void>;
+  saveLanguageProfile?(
+    id: string,
+    profile: NonNullable<Language["profile"]>
+  ): Promise<void>;
   deleteLanguage(id: string): Promise<void>;
   listLexemes(languageId: string): Promise<Lexeme[]>;
   saveLexeme(lexeme: Lexeme): Promise<void>;
@@ -47,7 +50,9 @@ export interface ProjectApplication {
   listMorphemes(languageId: string): Promise<Morpheme[]>;
   saveMorpheme(morpheme: Morpheme): Promise<void>;
   deleteMorpheme(id: string): Promise<void>;
-  listWordGenerationProfiles(languageId: string): Promise<WordGenerationProfile[]>;
+  listWordGenerationProfiles(
+    languageId: string
+  ): Promise<WordGenerationProfile[]>;
   saveWordGenerationProfile(profile: WordGenerationProfile): Promise<void>;
   deleteWordGenerationProfile(id: string): Promise<void>;
   listConceptLists(): Promise<ConceptList[]>;
@@ -55,11 +60,19 @@ export interface ProjectApplication {
   deleteConceptList(id: string): Promise<void>;
   listGenerationBatches(languageId: string): Promise<GenerationBatch[]>;
   createGenerationBatch(batch: GenerationBatch): Promise<void>;
-  saveGenerationCandidate(batchId: string, candidate: GenerationCandidate): Promise<void>;
-  saveGenerationCandidates(batchId: string, candidates: GenerationCandidate[]): Promise<void>;
+  saveGenerationCandidate(
+    batchId: string,
+    candidate: GenerationCandidate
+  ): Promise<void>;
+  saveGenerationCandidates(
+    batchId: string,
+    candidates: GenerationCandidate[]
+  ): Promise<void>;
   commitGenerationBatch(batchId: string): Promise<void>;
   dismissGenerationBatch(batchId: string): Promise<void>;
-  listLexiconBatchOperations(languageId: string): Promise<LexiconBatchOperation[]>;
+  listLexiconBatchOperations(
+    languageId: string
+  ): Promise<LexiconBatchOperation[]>;
   undoLexiconBatchOperation(operationId: string): Promise<void>;
   getEvolution(languageId: string): Promise<Evolution>;
   saveEvolution(evolution: Evolution): Promise<void>;
@@ -67,7 +80,16 @@ export interface ProjectApplication {
   saveInflectionSystem(system: InflectionSystem): Promise<void>;
   getSnapshot(): ProjectSnapshot | null;
   markProjectChanged(): Promise<void>;
-  runProjectOperation<T>(kind: string, summary: string, action: () => Promise<T>): Promise<T>;
+  runProjectOperation<T>(
+    kind: string,
+    summary: string,
+    action: () => Promise<T>,
+    options?: {
+      operationId?: string;
+      coalesceKey?: string;
+      coalesceSessionId?: string;
+    }
+  ): Promise<T>;
   undoProjectOperation(): Promise<ProjectOperationResult | null>;
   redoProjectOperation(): Promise<ProjectOperationResult | null>;
 }

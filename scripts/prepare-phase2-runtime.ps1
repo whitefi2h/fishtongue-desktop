@@ -19,6 +19,19 @@ $expanded = Join-Path $cache "temurin-21"
 $resourceRoot = Join-Path $workspace "src-tauri\resources\lexurgy"
 $runtime = Join-Path $resourceRoot "runtime"
 
+function Get-Sha256Hex([string]$Path) {
+  $stream = [System.IO.File]::OpenRead($Path)
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = $algorithm.ComputeHash($stream)
+    return ([System.BitConverter]::ToString($bytes)).Replace("-", "")
+  }
+  finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $cache | Out-Null
 
 if (-not (Test-Path -LiteralPath $archive)) {
@@ -26,7 +39,7 @@ if (-not (Test-Path -LiteralPath $archive)) {
   Invoke-WebRequest -Uri $lock.runtime.jdkUrl -OutFile $archive
 }
 
-$jdkHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+$jdkHash = (Get-Sha256Hex $archive).ToLowerInvariant()
 if ($jdkHash -ne $lock.runtime.jdkSha256.ToLowerInvariant()) {
   throw "Temurin SHA-256 mismatch. Expected $($lock.runtime.jdkSha256), got $jdkHash."
 }
@@ -34,7 +47,7 @@ if ($jdkHash -ne $lock.runtime.jdkSha256.ToLowerInvariant()) {
 if (-not (Test-Path -LiteralPath $EngineJar)) {
   throw "Engine JAR not found: $EngineJar"
 }
-$jarHash = (Get-FileHash -LiteralPath $EngineJar -Algorithm SHA256).Hash.ToUpperInvariant()
+$jarHash = (Get-Sha256Hex $EngineJar).ToUpperInvariant()
 if ($jarHash -ne $lock.fatJarSha256.ToUpperInvariant()) {
   throw "Engine JAR SHA-256 mismatch. Rebuild and update engine-lock.json intentionally."
 }

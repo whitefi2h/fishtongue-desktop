@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
-pub const DATABASE_SCHEMA_VERSION: u32 = 16;
+pub const DATABASE_SCHEMA_VERSION: u32 = 17;
 
 pub fn project_migrations() -> Vec<Migration> {
     vec![
@@ -100,9 +100,15 @@ pub fn project_migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
-            version: DATABASE_SCHEMA_VERSION.into(),
+            version: 16,
             description: "create_phase_7_project_history",
             sql: include_str!("../migrations/0016_phase_7_project_history.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: DATABASE_SCHEMA_VERSION.into(),
+            description: "create_phase_7_evolution_workbench",
+            sql: include_str!("../migrations/0017_phase_7_evolution_workbench.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -212,6 +218,47 @@ async fn run_pending_project_migrations(connection: &mut SqliteConnection) -> Re
             .map_err(|error| format!("cannot migrate the project database: {error}"))?;
     }
 
+    repair_phase_7_descendant_phonology_commit(connection).await?;
+
+    Ok(())
+}
+
+async fn repair_phase_7_descendant_phonology_commit(
+    connection: &mut SqliteConnection,
+) -> Result<(), String> {
+    let trigger_sql: Option<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='execute_evolution_delivery_commit'",
+    )
+    .fetch_optional(&mut *connection)
+    .await
+    .map_err(|error| format!("cannot inspect the Phase 7 evolution commit rule: {error}"))?;
+    let Some(trigger_sql) = trigger_sql else {
+        return Ok(());
+    };
+    let old_clause = "WHERE json_type(NEW.payload_json, '$.phonologyOverride') = 'object'\n    AND (SELECT target_type FROM evolution_deliveries WHERE id = NEW.delivery_id)\n      IN ('new_stage', 'existing_stage', 'existing_dialect')";
+    if !trigger_sql.contains(old_clause) {
+        return Ok(());
+    }
+    let repaired = trigger_sql.replace(
+        old_clause,
+        "WHERE json_type(NEW.payload_json, '$.phonologyOverride') = 'object'\n    AND (SELECT target_type FROM evolution_deliveries WHERE id = NEW.delivery_id)\n      IN ('new_stage', 'existing_stage', 'existing_dialect', 'new_descendant')",
+    );
+    let mut transaction = connection
+        .begin()
+        .await
+        .map_err(|error| format!("cannot begin the Phase 7 evolution repair: {error}"))?;
+    sqlx::query("DROP TRIGGER execute_evolution_delivery_commit")
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| format!("cannot replace the Phase 7 evolution commit rule: {error}"))?;
+    sqlx::raw_sql(&repaired)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| format!("cannot install the Phase 7 evolution commit repair: {error}"))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| format!("cannot finish the Phase 7 evolution commit repair: {error}"))?;
     Ok(())
 }
 
@@ -269,7 +316,7 @@ mod tests {
         connection
     }
 
-    async fn migrated_database() -> SqliteConnection {
+    async fn database_through_v16() -> SqliteConnection {
         let mut connection = database_through_v8().await;
         sqlx::raw_sql(include_str!(
             "../migrations/0009_phase_5_stage_save_repair.sql"
@@ -311,6 +358,23 @@ mod tests {
         .execute(&mut connection)
         .await
         .expect("apply Phase 6 borrowing lexeme notes repair");
+        sqlx::raw_sql(include_str!(
+            "../migrations/0016_phase_7_project_history.sql"
+        ))
+        .execute(&mut connection)
+        .await
+        .expect("apply Phase 7 project history schema");
+        connection
+    }
+
+    async fn migrated_database() -> SqliteConnection {
+        let mut connection = database_through_v16().await;
+        sqlx::raw_sql(include_str!(
+            "../migrations/0017_phase_7_evolution_workbench.sql"
+        ))
+        .execute(&mut connection)
+        .await
+        .expect("apply Phase 7 evolution workbench schema");
         connection
     }
 
@@ -1531,5 +1595,237 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(created, 0);
+    }
+
+    #[tokio::test]
+    async fn schema_v17_migrates_the_legacy_editor_once_without_losing_test_words() {
+        let mut database = database_through_v16().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p','Project','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO languages (id,project_id,name,created_at,updated_at)
+              VALUES ('l','p','Language','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO evolutions VALUES ('e','l','raising:\na => e','2026-01-02T00:00:00Z');
+            INSERT INTO evolution_test_words VALUES
+              ('w1','e','aka',0),('w2','e','pata',1);
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0017_phase_7_evolution_workbench.sql"
+        ))
+        .execute(&mut database)
+        .await
+        .expect("apply schema v17 to a legacy project");
+
+        let row = sqlx::query(
+            "SELECT legacy_evolution_id,rules_draft,input_mode,test_words_json
+             FROM evolution_plans WHERE language_id='l'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        assert_eq!(row.get::<String, _>("legacy_evolution_id"), "e");
+        assert_eq!(row.get::<String, _>("rules_draft"), "raising:\\na => e");
+        assert_eq!(row.get::<String, _>("input_mode"), "phonological");
+        let words: serde_json::Value =
+            serde_json::from_str(&row.get::<String, _>("test_words_json")).unwrap();
+        assert_eq!(words.as_array().unwrap().len(), 2);
+        assert_eq!(words[1]["word"], "pata");
+    }
+
+    #[tokio::test]
+    async fn schema_v17_commits_a_delivery_to_a_new_stage_as_one_command() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p','Project','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO languages (id,project_id,name,created_at,updated_at)
+              VALUES ('l','p','Language','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO lexemes (id,language_id,romanized,part_of_speech,created_at,updated_at,ipa,status,source_type,notes)
+              VALUES ('x','l','aka','noun','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','/aka/','confirmed','manual','');
+            INSERT INTO senses VALUES ('sense','x','fish',0);
+            INSERT INTO evolution_plans VALUES (
+              'plan','l',NULL,'Plan','','l:default-stage','phonological','a => e','[]','{}',0,
+              '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'
+            );
+            INSERT INTO evolution_plan_versions VALUES (
+              'version','plan',1,'a => e','[]','phonological','{}','','hash',
+              '2026-01-01T00:00:00Z'
+            );
+            INSERT INTO evolution_run_write_commands VALUES (
+              'run','version','l','l:default-stage','phonological','succeeded','engine','engine-hash',
+              'protocol','rules-hash','input-hash','state-hash','{}',
+              '{"total":1,"changed":1,"unchanged":0,"warnings":0,"errors":0,"notRun":0}',
+              '[]','2026-01-02T00:00:00Z','2026-01-02T00:00:01Z',
+              '[{"id":"run-item","sourceLexemeId":"x","sourceDisplayForm":"aka","sourcePhonologicalForm":"/aka/","engineInput":"aka","engineOutput":"eke","targetPhonologicalForm":"/eke/","inputOrigin":"stored","status":"changed","intermediateJson":"{}","traceJson":"[]","issueJson":"[]","position":0}]'
+            );
+            INSERT INTO evolution_delivery_write_commands VALUES (
+              'delivery','run','new_stage','l',NULL,'{"name":"Later"}','target-hash','{}',
+              '2026-01-03T00:00:00Z','2026-01-03T00:00:00Z',
+              '[{"id":"delivery-item","runItemId":"run-item","decision":"include","targetPhonologicalForm":"/eke/","targetDisplayForm":"eke","orthographyResolution":"manual","homophoneAcknowledged":0,"conflictJson":"[]","notes":"","targetLexemeId":null,"position":0}]'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+        let payload = serde_json::json!({
+          "stage": {"name":"Later","chronologyParentId":"l:default-stage","dataBaseStageId":"l:default-stage","startLabel":"","endLabel":"","position":1},
+          "overrides": [{"id":"delivery:delivery-item","targetId":"x","payloadJson":"{\"id\":\"x\",\"languageId\":\"l\",\"romanized\":\"eke\",\"ipa\":\"/eke/\",\"senses\":[{\"id\":\"sense\",\"definition\":\"fish\",\"position\":0}],\"morphemes\":[]}"}],
+          "itemTargets": [{"itemId":"delivery-item","targetLexemeId":"x"}]
+        }).to_string();
+        sqlx::query(
+            "INSERT INTO evolution_delivery_commit_commands VALUES ('operation','delivery','l','later',?1,?2)",
+        )
+        .bind("2026-01-04T00:00:00Z")
+        .bind(payload)
+        .execute(&mut database)
+        .await
+        .expect("publish the whole delivery");
+
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM evolution_deliveries WHERE id='delivery'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap();
+        let target: String = sqlx::query_scalar(
+            "SELECT json_extract(payload_json,'$.romanized') FROM stage_component_overrides WHERE stage_id='later'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let source: String = sqlx::query_scalar("SELECT romanized FROM lexemes WHERE id='x'")
+            .fetch_one(&mut database)
+            .await
+            .unwrap();
+        assert_eq!(
+            (status, target, source),
+            ("committed".into(), "eke".into(), "aka".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn schema_v17_creates_a_complete_descendant_with_remapped_lexical_ids() {
+        let mut database = migrated_database().await;
+        sqlx::raw_sql(
+            r#"
+            INSERT INTO projects VALUES ('p','Project','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO languages (id,project_id,name,created_at,updated_at)
+              VALUES ('source','p','Source','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO lexemes (id,language_id,romanized,part_of_speech,created_at,updated_at,ipa,status,source_type,notes)
+              VALUES ('source-lexeme','source','aka','noun','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','/aka/','confirmed','manual','');
+            INSERT INTO senses VALUES ('source-sense','source-lexeme','fish',0);
+            INSERT INTO evolution_plans VALUES ('plan','source',NULL,'Plan','','source:default-stage','phonological','a => e','[]','{}',0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+            INSERT INTO evolution_plan_versions VALUES ('version','plan',1,'a => e','[]','phonological','{}','','hash','2026-01-01T00:00:00Z');
+            INSERT INTO evolution_run_write_commands VALUES (
+              'run','version','source','source:default-stage','phonological','succeeded','engine','engine-hash','protocol','rules-hash','input-hash','state-hash','{}',
+              '{"total":1,"changed":1,"unchanged":0,"warnings":0,"errors":0,"notRun":0}','[]','2026-01-02T00:00:00Z','2026-01-02T00:00:01Z',
+              '[{"id":"run-item","sourceLexemeId":"source-lexeme","sourceDisplayForm":"aka","sourcePhonologicalForm":"/aka/","engineInput":"aka","engineOutput":"eke","targetPhonologicalForm":"/eke/","inputOrigin":"stored","status":"changed","intermediateJson":"{}","traceJson":"[]","issueJson":"[]","position":0}]'
+            );
+            INSERT INTO evolution_delivery_write_commands VALUES (
+              'delivery','run','new_descendant',NULL,NULL,'{"languageName":"Daughter"}','target-hash','{}','2026-01-03T00:00:00Z','2026-01-03T00:00:00Z',
+              '[{"id":"delivery-item","runItemId":"run-item","decision":"include","targetPhonologicalForm":"/eke/","targetDisplayForm":"eke","orthographyResolution":"manual","homophoneAcknowledged":0,"conflictJson":"[]","notes":"","targetLexemeId":null,"position":0}]'
+            );
+            "#,
+        )
+        .execute(&mut database)
+        .await
+        .unwrap();
+        let payload = serde_json::json!({
+          "stage": {"name":"First stage","chronologyParentId":null,"dataBaseStageId":null,"startLabel":"","endLabel":"","position":1},
+          "overrides": [],
+          "phonologyOverride": {"id":"daughter-phonology","languageId":"daughter","structureVersion":"phonology-profile-v1","syllableTemplates":[],"legalOnsets":[],"legalNuclei":[],"legalCodas":[],"legalClusters":[],"forbiddenPatterns":[],"stressRules":{},"toneRules":{},"phonemes":[{"id":"daughter-e","profileId":"daughter-phonology","ipa":"e","displaySymbol":"e","category":"vowel","role":"allophone","parentPhonemeId":"daughter-a","distribution":"_ k（来自规则“raising”）","source":"evolution-confirmed","notes":"confirmed","position":1}],"createdAt":"2026-01-04T00:00:00Z","updatedAt":"2026-01-04T00:00:00Z"},
+          "itemTargets": [{"itemId":"delivery-item","targetLexemeId":"daughter-lexeme"}],
+          "descendant": {
+            "projectId":"p","languageName":"Daughter","profile":{},"sourceLanguageId":"source",
+            "sourceStageId":"source:default-stage","relationId":"relation","notes":"evolved",
+            "morphemes":[{"id":"daughter-root","form":"ek","type":"root","meaning":"fish","applicablePartOfSpeech":"noun","status":"confirmed","compositionRule":{"mode":"none"},"notes":""}],
+            "lexemes":[{"id":"daughter-lexeme","romanized":"eke","ipa":"/eke/","partOfSpeech":"noun","status":"confirmed","sourceType":"imported","notes":"","senses":[{"id":"daughter-sense","definition":"fish","position":0}],"morphemes":[{"morphemeId":"daughter-root","role":"root"}]}],
+            "etymologies":[{"id":"etymology","sourceLexemeId":"source-lexeme","targetLexemeId":"daughter-lexeme","sourceForm":"aka"}]
+          }
+        }).to_string();
+        sqlx::query("INSERT INTO evolution_delivery_commit_commands VALUES ('operation','delivery','daughter','daughter-stage',?1,?2)")
+            .bind("2026-01-04T00:00:00Z")
+            .bind(payload)
+            .execute(&mut database)
+            .await
+            .expect("create the descendant aggregate");
+
+        let language: String = sqlx::query_scalar("SELECT name FROM languages WHERE id='daughter'")
+            .fetch_one(&mut database)
+            .await
+            .unwrap();
+        let stage_base: String = sqlx::query_scalar(
+            "SELECT data_base_stage_id FROM language_stages WHERE id='daughter-stage'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let lexeme: (String, String) =
+            sqlx::query_as("SELECT romanized,language_id FROM lexemes WHERE id='daughter-lexeme'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap();
+        let links: i64 = sqlx::query_scalar("SELECT count(*) FROM lexeme_morphemes WHERE lexeme_id='daughter-lexeme' AND morpheme_id='daughter-root'")
+            .fetch_one(&mut database).await.unwrap();
+        let relations: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM language_relations WHERE id='relation' AND is_primary=1",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let etymologies: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM etymology_relations WHERE id='etymology'")
+                .fetch_one(&mut database)
+                .await
+                .unwrap();
+        let distribution: String = sqlx::query_scalar(
+            "SELECT json_extract(payload_json,'$.phonemes[0].distribution') FROM stage_component_overrides WHERE stage_id='daughter-stage' AND component_type='phonology'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        assert_eq!(language, "Daughter");
+        assert_eq!(stage_base, "daughter:default-stage");
+        assert_eq!(lexeme, ("eke".into(), "daughter".into()));
+        assert_eq!((links, relations, etymologies), (1, 1, 1));
+        assert_eq!(distribution, "_ k（来自规则“raising”）");
+    }
+
+    #[tokio::test]
+    async fn schema_v17_repairs_an_already_opened_project_commit_rule() {
+        let mut database = migrated_database().await;
+        let current: String = sqlx::query_scalar(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='execute_evolution_delivery_commit'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        let old = current.replace(
+            "IN ('new_stage', 'existing_stage', 'existing_dialect', 'new_descendant')",
+            "IN ('new_stage', 'existing_stage', 'existing_dialect')",
+        );
+        sqlx::query("DROP TRIGGER execute_evolution_delivery_commit")
+            .execute(&mut database)
+            .await
+            .unwrap();
+        sqlx::raw_sql(&old).execute(&mut database).await.unwrap();
+
+        super::repair_phase_7_descendant_phonology_commit(&mut database)
+            .await
+            .expect("repair the already-applied v17 rule");
+
+        let repaired: String = sqlx::query_scalar(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='execute_evolution_delivery_commit'",
+        )
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+        assert!(repaired.contains(
+            "IN ('new_stage', 'existing_stage', 'existing_dialect', 'new_descendant')"
+        ));
     }
 }

@@ -4,6 +4,42 @@
   gap: 12px;
   color: var(--ft-color-text-primary);
 }
+
+.genealogyEvolutionCount {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--ft-color-border-default);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-bg-workspace);
+  color: var(--ft-color-text-secondary);
+  font-size: 12px;
+}
+.genealogyEvolutionCount small {
+  font-variant-numeric: tabular-nums;
+}
+.genealogyEvolutionMarkers g {
+  cursor: pointer;
+  outline: none;
+}
+.genealogyEvolutionMarkers circle {
+  fill: var(--ft-color-accent);
+  stroke: var(--ft-color-bg-workspace);
+  stroke-width: 2;
+}
+.genealogyEvolutionMarkers text {
+  fill: var(--ft-color-on-accent);
+  font-size: 7px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.genealogyEvolutionMarkers g:hover circle,
+.genealogyEvolutionMarkers g:focus-visible circle {
+  stroke: var(--ft-color-focus);
+  stroke-width: 3;
+}
 .sectionToolbar {
   display: flex;
   min-height: 40px;
@@ -1300,10 +1336,9 @@
   display: grid;
   min-width: 1000px;
   min-height: 46px;
-  grid-template-columns: 40px 96px minmax(138px, 1.2fr) minmax(148px, 1.25fr) 52px minmax(
-      112px,
-      1fr
-    ) 68px 76px 58px 68px;
+  grid-template-columns:
+    40px 96px minmax(138px, 1.2fr) minmax(148px, 1.25fr) 52px minmax(112px, 1fr)
+    68px 76px 58px 68px;
   align-items: center;
   border-bottom: 1px solid var(--ft-color-border-subtle);
   font-size: 12px;
@@ -1438,10 +1473,9 @@
 }
 .batchDuplicateList > label {
   display: grid;
-  grid-template-columns: 18px minmax(90px, 0.7fr) minmax(0, 1.4fr) minmax(
-      0,
-      1fr
-    ) auto;
+  grid-template-columns:
+    18px minmax(90px, 0.7fr) minmax(0, 1.4fr) minmax(0, 1fr)
+    auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;

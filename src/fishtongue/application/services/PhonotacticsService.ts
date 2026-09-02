@@ -1,4 +1,8 @@
-import { Phoneme, PhonemeClass, PhonologyProfile } from "@/fishtongue/domain/models";
+import {
+  Phoneme,
+  PhonemeClass,
+  PhonologyProfile,
+} from "@/fishtongue/domain/models";
 import { ipaInputAliases } from "@/fishtongue/application/services/IpaNormalization";
 
 export interface PhonotacticsValidationResult {
@@ -31,6 +35,25 @@ interface TokenizationResult {
 }
 
 const NASAL_CONSONANTS = new Set(["m", "ɱ", "n", "ɳ", "ɲ", "ŋ", "ɴ"]);
+const PROSODIC_SEPARATORS = new Set([
+  ".",
+  "·",
+  "‧",
+  "ˈ",
+  "ˌ",
+  "'",
+  "’",
+  "‿",
+  "|",
+  "‖",
+  "#",
+  "_",
+  "-",
+  " ",
+  "\t",
+  "\n",
+  "\r",
+]);
 
 /**
  * PanPhon answers whether IPA symbols exist. This service answers whether the
@@ -48,13 +71,16 @@ export function validatePhonotactics(
       segments: tokenization.segments.map((segment) => segment.inputIpa),
       structure: "",
       warnings: [
-        `包含本语言正式音位表之外的符号：${tokenization.unknownSymbols.join("、")}`,
+        `包含本语言正式音位表之外的符号：${tokenization.unknownSymbols.join(
+          "、"
+        )}`,
       ],
     };
   }
 
   const coreSegments = tokenization.segments.filter(
-    (segment) => segment.category === "consonant" || segment.category === "vowel"
+    (segment) =>
+      segment.category === "consonant" || segment.category === "vowel"
   );
   let structure = coreSegments
     .map((segment) => (segment.category === "vowel" ? "V" : "C"))
@@ -216,6 +242,10 @@ function tokenize(
     }
     const unknown = Array.from(normalized.slice(offset))[0];
     if (!unknown) break;
+    if (PROSODIC_SEPARATORS.has(unknown)) {
+      offset += unknown.length;
+      continue;
+    }
     if (!unknownSymbols.includes(unknown)) unknownSymbols.push(unknown);
     offset += unknown.length;
   }
@@ -247,7 +277,9 @@ function matchSyllableTemplates(
   templates: ParsedTemplate[]
 ): ParsedTemplate[] | undefined {
   const uniqueTemplates = [
-    ...new Map(templates.map((template) => [template.symbols.join(""), template])).values(),
+    ...new Map(
+      templates.map((template) => [template.symbols.join(""), template])
+    ).values(),
   ];
   if (!uniqueTemplates.length) return [];
   const memo = new Map<number, ParsedTemplate[] | undefined>();

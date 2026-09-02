@@ -105,6 +105,19 @@ export default class Phase6ApplicationService implements Phase6Application {
     return this.analysis.validateIpa({ ipa: normalizeIpaForAnalysis(ipa) });
   }
 
+  async validateIpas(ipas: string[]) {
+    const normalized = ipas.map(normalizeIpaForAnalysis);
+    const results = [];
+    for (let offset = 0; offset < normalized.length; offset += 512) {
+      results.push(
+        ...(await this.analysis.validateIpas({
+          ipas: normalized.slice(offset, offset + 512),
+        }))
+      );
+    }
+    return results;
+  }
+
   validatePhonotactics(form: string, profile: PhonologyProfile) {
     return validatePhonotactics(form, profile);
   }

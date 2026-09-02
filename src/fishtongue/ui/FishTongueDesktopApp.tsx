@@ -2,6 +2,7 @@ import { DesktopWindowPort, WindowState } from "@/fishtongue/application/ports/D
 import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
 import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { Phase6Application } from "@/fishtongue/application/ports/Phase6Application";
+import { EvolutionApplication } from "@/fishtongue/application/ports/EvolutionApplication";
 import InflectionService from "@/fishtongue/application/services/InflectionService";
 import SoundChangeService from "@/fishtongue/application/services/SoundChangeService";
 import WordGenerationService from "@/fishtongue/application/services/WordGenerationService";
@@ -98,7 +99,7 @@ type DialogKind =
   | null;
 type AppMode = "welcome" | "workspace";
 
-function toPrototypeLanguage(language: Language): PrototypeLanguage {
+function toPrototypeLanguage(language: Language, words = 0): PrototypeLanguage {
   return {
     id: language.id,
     name: language.name,
@@ -107,7 +108,7 @@ function toPrototypeLanguage(language: Language): PrototypeLanguage {
     era: "未设置",
     region: "未设置",
     status: "真实项目数据",
-    words: 0,
+    words,
     warnings: 0,
     stages: [],
   };
@@ -165,6 +166,7 @@ export default function FishTongueDesktopApp({
   aiApplication,
   historyApplication,
   phase6Application,
+  evolutionApplication,
 }: {
   application: ProjectApplication;
   windowPort: DesktopWindowPort;
@@ -174,6 +176,7 @@ export default function FishTongueDesktopApp({
   aiApplication?: AiApplication;
   historyApplication?: Phase5Application;
   phase6Application?: Phase6Application;
+  evolutionApplication?: EvolutionApplication;
 }) {
   type LexiconEntryTab = "dictionary" | "profile" | "review";
   type WorkspaceHistoryEntry = {
@@ -785,6 +788,7 @@ export default function FishTongueDesktopApp({
                 aiApplication={aiApplication}
                 historyApplication={historyApplication}
                 phase6Application={phase6Application}
+                evolutionApplication={evolutionApplication}
                 aiProposalDraft={aiProposalDraft}
                 contactAiDrafts={contactAiDrafts}
                 contactWorkspaceKey={contactWorkspaceKey}
@@ -1285,6 +1289,7 @@ function PageContent(props: {
   aiApplication?: AiApplication;
   historyApplication?: Phase5Application;
   phase6Application?: Phase6Application;
+  evolutionApplication?: EvolutionApplication;
   aiProposalDraft?: AiProposalDraft;
   contactAiDrafts: AiProposalDraft[];
   contactWorkspaceKey: string;
@@ -1325,15 +1330,76 @@ function PageContent(props: {
   const liveLanguage = Boolean(
     props.snapshot?.languages.some((language) => language.id === props.language.id)
   );
+  const snapshotForCounts = props.snapshot;
+  const applicationForCounts = props.application;
+  const historyForCounts = props.historyApplication;
+  const selectedStageIdForCounts = props.selectedStage?.id;
+  const selectedLanguageIdForCounts = props.language.id;
+  const refreshRequestForCounts = props.projectDataRefreshRequest;
+  const reportCountStatus = props.onStatus;
+  const languageIds = props.snapshot?.languages.map((language) => language.id).join("|") ?? "";
+  const [lexemeCounts, setLexemeCounts] = useState<Record<string, number>>({});
+  const [lexemeCountsLoading, setLexemeCountsLoading] = useState(false);
+  useEffect(() => {
+    if (!snapshotForCounts) {
+      setLexemeCounts({});
+      setLexemeCountsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLexemeCountsLoading(true);
+    const snapshot = snapshotForCounts;
+    void Promise.all(
+      snapshot.languages.map(async (language) =>
+        [language.id, (await applicationForCounts.listLexemes(language.id)).length] as const
+      )
+    )
+      .then(async (entries) => {
+        const next = Object.fromEntries(entries) as Record<string, number>;
+        if (selectedStageIdForCounts && historyForCounts) {
+          const resolved = await historyForCounts.resolveStage(
+            selectedStageIdForCounts
+          );
+          next[selectedLanguageIdForCounts] = Object.keys(resolved.components.lexicon).length;
+        }
+        if (!cancelled) setLexemeCounts(next);
+      })
+      .catch((reason) => {
+        if (!cancelled) reportCountStatus(`无法读取词条统计：${errorMessage(reason)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLexemeCountsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    languageIds,
+    applicationForCounts,
+    historyForCounts,
+    selectedLanguageIdForCounts,
+    reportCountStatus,
+    refreshRequestForCounts,
+    selectedStageIdForCounts,
+    snapshotForCounts,
+  ]);
   const projectLanguages = props.snapshot
-    ? props.snapshot.languages.map(toPrototypeLanguage)
+    ? props.snapshot.languages.map((language) =>
+        toPrototypeLanguage(language, lexemeCounts[language.id] ?? 0)
+      )
     : prototypeProject.languages;
+  const selectedLanguage = projectLanguages.find(
+    (language) => language.id === props.language.id
+  );
+  const currentLanguage = selectedLanguage
+    ? { ...selectedLanguage, stages: props.language.stages }
+    : props.language;
   const lexiconViewStateKey = props.snapshot
     ? `${props.snapshot.project.id}:${props.language.id}:${props.selectedStage?.id ?? "default"}`
     : "preview";
   switch (props.route) {
-    case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
-    case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "project-home": return <ProjectHome languages={projectLanguages} live={Boolean(props.snapshot)} lexemeCountsLoading={lexemeCountsLoading} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
+    case "languages": return <LanguagesPage languages={projectLanguages} live={Boolean(props.snapshot)} lexemeCountsLoading={lexemeCountsLoading} onLanguage={props.onLanguage} onCreateLanguage={props.onCreateLanguage} />;
     case "genealogy": return props.snapshot && props.historyApplication
       ? <GenealogyWorkspace application={props.historyApplication}
           languages={props.snapshot.languages}
@@ -1357,7 +1423,7 @@ function PageContent(props: {
           onStatus={props.onStatus} />
       : <EventsPage />;
     case "project-settings": return props.snapshot ? <LiveProjectPlaceholder title="项目设置尚未接入真实项目" /> : <SettingsPage />;
-    case "language-overview": return <LanguageOverview language={props.language} />;
+    case "language-overview": return <LanguageOverview language={currentLanguage} lexemeCountsLoading={lexemeCountsLoading} />;
     case "language-properties": {
       const language = props.snapshot?.languages.find((item) => item.id === props.language.id);
       return language && props.historyApplication
@@ -1446,6 +1512,7 @@ function PageContent(props: {
       : <PrototypeLexiconPage />;
     case "writing": return <WritingPage />;
     case "evolution": return <EvolutionWorkspace application={props.application}
+      evolutionApplication={props.evolutionApplication}
       service={props.soundChangeService} languageId={props.language.id}
       live={liveLanguage} aiDraft={props.aiProposalDraft}
       onAiDraftConsumed={props.onAiProposalConsumed}
@@ -1454,6 +1521,16 @@ function PageContent(props: {
       onStageDataChanged={() => {
         const current = props.application.getSnapshot();
         if (current) props.onProjectChanged(current);
+      }}
+      onOpenLanguage={(languageId) => {
+        const language = projectLanguages.find((item) => item.id === languageId);
+        if (language) props.onLanguage(language);
+      }}
+      onOpenStage={(languageId, stageId) => {
+        const language = projectLanguages.find((item) => item.id === languageId);
+        const stage = language?.stages.find((item) => item.id === stageId);
+        if (language) props.onLanguage(language);
+        if (stage) props.onStage(stage);
       }} />;
     case "contact": return props.snapshot && props.historyApplication
       ? <EtymologyWorkspace application={props.historyApplication}
@@ -1479,9 +1556,10 @@ function PageContent(props: {
   }
 }
 
-function ProjectHome({ languages, live, onLanguage, onCreateLanguage }: {
+function ProjectHome({ languages, live, lexemeCountsLoading, onLanguage, onCreateLanguage }: {
   languages: PrototypeLanguage[];
   live: boolean;
+  lexemeCountsLoading: boolean;
   onLanguage: (language: PrototypeLanguage) => void;
   onCreateLanguage: () => void;
 }) {
@@ -1494,7 +1572,7 @@ function ProjectHome({ languages, live, onLanguage, onCreateLanguage }: {
     />;
   }
   const summary = live
-    ? [[String(languages.length), "种语言"], ["—", "个词条"], ["—", "条继承关系"], ["0", "项待处理"]]
+    ? [[String(languages.length), "种语言"], [lexemeCountsLoading ? "…" : String(languages.reduce((total, language) => total + language.words, 0)), "个词条"], ["—", "条继承关系"], ["0", "项待处理"]]
     : [["4", "种语言"], ["2,640", "个词条"], ["3", "条继承关系"], ["22", "项待处理"]];
   return <div className={styles.pageGrid}>
     <section className={styles.summaryStrip}>
@@ -1514,9 +1592,10 @@ function ProjectHome({ languages, live, onLanguage, onCreateLanguage }: {
   </div>;
 }
 
-function LanguagesPage({ languages, live, onLanguage, onCreateLanguage }: {
+function LanguagesPage({ languages, live, lexemeCountsLoading, onLanguage, onCreateLanguage }: {
   languages: PrototypeLanguage[];
   live: boolean;
+  lexemeCountsLoading: boolean;
   onLanguage: (language: PrototypeLanguage) => void;
   onCreateLanguage: () => void;
 }) {
@@ -1529,7 +1608,7 @@ function LanguagesPage({ languages, live, onLanguage, onCreateLanguage }: {
       <tbody>{languages.map((language) => <tr key={language.id}>
         <td><button className={styles.textButton} aria-label={`打开${language.name}`} onClick={() => onLanguage(language)}><strong>{language.name}</strong><small>{language.nativeName}</small></button></td>
         <td><span className={styles.statusTag}>{language.status}</span></td><td>{language.family}</td><td>{language.era}</td><td>{language.region}</td>
-        <td>{language.words.toLocaleString()}</td><td><StatusDot warnings={language.warnings} /></td>
+        <td>{lexemeCountsLoading ? "…" : language.words.toLocaleString()}</td><td><StatusDot warnings={language.warnings} /></td>
       </tr>)}</tbody>
     </table>
   </section>;
@@ -1576,11 +1655,14 @@ function SettingsPage() {
   </section>;
 }
 
-function LanguageOverview({ language }: { language: PrototypeLanguage }) {
+function LanguageOverview({ language, lexemeCountsLoading }: {
+  language: PrototypeLanguage;
+  lexemeCountsLoading: boolean;
+}) {
   return <div className={styles.pageGrid}>
     <section className={styles.languageHero}><div className={styles.languageAvatarLarge}>{language.name[0]}</div><div><h2>{language.name}</h2><p>{language.nativeName} · {language.family} · {language.status}</p></div>
       <div className={styles.completion}><strong>72%</strong><span>资料完整度</span></div></section>
-    <section className={styles.summaryStrip}>{[["32", "个音位"], ["18", "条规则"], ["64", "个语素"], [language.words.toLocaleString(), "个词条"]].map(([v,l]) => <div key={l}><strong>{v}</strong><span>{l}</span></div>)}</section>
+    <section className={styles.summaryStrip}>{[["32", "个音位"], ["18", "条规则"], ["64", "个语素"], [lexemeCountsLoading ? "…" : language.words.toLocaleString(), "个词条"]].map(([v,l]) => <div key={l}><strong>{v}</strong><span>{l}</span></div>)}</section>
     <section className={styles.splitColumns}><div className={styles.surfacePanel}><PanelHeading title="当前工作状态" /><IssueList /></div>
       <div className={styles.surfacePanel}><PanelHeading title="快捷入口" /><div className={styles.quickGrid}>{["添加音位","创建词根","导入词典","生成基础词汇","创建下一阶段","创建后代语言"].map((item)=><button key={item}>{item}<ChevronRightIcon aria-hidden="true" /></button>)}</div></div></section>
   </div>;

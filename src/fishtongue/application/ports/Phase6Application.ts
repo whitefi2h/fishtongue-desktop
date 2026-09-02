@@ -38,6 +38,7 @@ export interface Phase6Application {
   listBorrowingBatches(targetLanguageId: string): Promise<BorrowingBatch[]>;
   saveBorrowingCandidate(candidate: BorrowingCandidate): Promise<void>;
   validateIpa(ipa: string): Promise<IpaValidationResult>;
+  validateIpas(ipas: string[]): Promise<IpaValidationResult[]>;
   validatePhonotactics(
     form: string,
     profile: PhonologyProfile

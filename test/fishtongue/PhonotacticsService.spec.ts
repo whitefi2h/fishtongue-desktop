@@ -10,7 +10,17 @@ const profile: PhonologyProfile = {
   legalNuclei: ["a", "e", "i", "o", "u"],
   legalCodas: ["m", "n", "s", "l", "r"],
   legalClusters: ["pl", "pr", "tr", "kr", "kl"],
-  forbiddenPatterns: ["[aeiou]{2,}", "pp", "tt", "kk", "mm", "nn", "ss", "ll", "rr"],
+  forbiddenPatterns: [
+    "[aeiou]{2,}",
+    "pp",
+    "tt",
+    "kk",
+    "mm",
+    "nn",
+    "ss",
+    "ll",
+    "rr",
+  ],
   stressRules: {},
   toneRules: {},
   phonemes: [..."ptkmnslraeiou"].map((ipa, position) => ({
@@ -18,7 +28,9 @@ const profile: PhonologyProfile = {
     profileId: "phonology",
     ipa,
     displaySymbol: ipa,
-    category: "aeiou".includes(ipa) ? ("vowel" as const) : ("consonant" as const),
+    category: "aeiou".includes(ipa)
+      ? ("vowel" as const)
+      : ("consonant" as const),
     role: "phoneme" as const,
     distribution: "",
     source: "manual",
@@ -46,6 +58,12 @@ test.each(["a", "pa", "pal", "pra"])(
     );
   }
 );
+
+test("ignores syllable boundaries and stress marks during inventory checks", () => {
+  expect(validatePhonotactics("ˈpa.la", profile)).toEqual(
+    expect.objectContaining({ valid: true, segments: ["p", "a", "l", "a"] })
+  );
+});
 
 test.each(["ham", "haŋ", "pan"])(
   "supports nasal codas in the N slot of CVN for %s",
@@ -96,7 +114,11 @@ test("resolves a saved allophone through its parent phoneme", () => {
     ],
   };
   expect(validatePhonotactics("mə", allophoneProfile)).toEqual(
-    expect.objectContaining({ valid: true, segments: ["m", "ə"], structure: "CV" })
+    expect.objectContaining({
+      valid: true,
+      segments: ["m", "ə"],
+      structure: "CV",
+    })
   );
 });
 
@@ -134,7 +156,11 @@ test("tokenizes a saved multi-code-point phoneme as one segment", () => {
     ],
   };
   expect(validatePhonotactics(`${affricate}a`, affricateProfile)).toEqual(
-    expect.objectContaining({ valid: true, segments: [affricate, "a"], structure: "CV" })
+    expect.objectContaining({
+      valid: true,
+      segments: [affricate, "a"],
+      structure: "CV",
+    })
   );
 });
 

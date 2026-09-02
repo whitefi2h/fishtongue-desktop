@@ -1,5 +1,18 @@
 # FishTongue 开发上下文
 
+## Phase 7.2 实施边界
+
+- Phase 7.2 正在开发，尚未通过独立 Windows 人工验收，不得标记为正式结项。详细计划、风险和验收材料位于 `docs/phase-7-2/`。
+- Schema v17 将可编辑 `EvolutionPlan`、不可变 `EvolutionPlanVersion`、不可变 `EvolutionRun` 与可编辑至提交前的 `EvolutionDelivery` 分开持久化。旧 `evolutions` 只迁移为默认方案；Phase 5 的旧阶段演化证据不删除。
+- 默认数据链固定为“来源显示词形 → 来源 IPA → Lexurgy → 目标 IPA → 人工确认目标拼写”。缺少 IPA 不得静默改用显示词形；临时 IPA 只进入运行快照。
+- `EvolutionApplicationService` 是演化方案、阶段解析、Lexurgy、IPA 分析、提交和项目操作协议的统一协调入口。React 不直接访问 SQLite 或 Sidecar。
+- 提交草稿检查必须通过 Analysis Sidecar 的批量 IPA 命令完成（大型词典按 512 项安全分片）；不得为每个词分别启动 Python 进程。Lexurgy 与 Analysis Sidecar 在窗口收到关闭请求时立即清理，并在窗口销毁事件再次兜底。
+- 演化产生的未登记音必须先在提交草稿中配置为独立音位或既有音位的变体；分布/条件从逐规则追踪与 Lexurgy 规则预填。确认配置只解除检查阻断，正式提交时才把音系差异与词典、阶段或后代语言作为同一个项目操作原子写入；失败、撤销和重做不得留下孤立音系记录。
+- 测试词通过 `previewTestWords` 直接做临时 Lexurgy 试跑，不读取正式词典，也不创建版本、运行或提交记录；只有正式词典输入可以建立可提交的不可变运行。
+- 运行与原始逐规则追踪不可修改。拼写、跳过、同音确认和冲突决定只写入提交草稿；正式提交前必须重新检查来源与目标状态。
+- 四类落点共用 `evolution_delivery_commit_commands` 原子入口；来源阶段不修改。提交形成一个全局项目操作，v17 的六组演化表已进入 Rust 项目操作快照。
+- 演化图从阶段、语言关系和已提交 Delivery 推导；内部默认状态隐藏，不建立第二套图边权威数据。
+
 ## Phase 7.1 已封存边界
 
 - Phase 7.1 已于 2026-08-14 通过外部 Windows 人工验收并正式结项；后续阶段必须回归其全局撤销/重做、阶段词典和导航语义。
@@ -24,7 +37,7 @@
 ## Phase 5 已封存边界
 
 - Phase 4 已通过外部 Windows 人工验收并由 `phase-4.0.1` 标签封存。
-- Phase 5 使用 Schema v12；发布过的 v1～v11 迁移不可修改。v9 通过命令表把阶段主体和
+- Phase 5 使用 Schema v12；发布过的 v1 ～ v11 迁移不可修改。v9 通过命令表把阶段主体和
   阶段上下文合并为一次原子写入，并在新建阶段位置冲突时安全分配下一个位置；v10 修复
   已记录 v9 但缺少写入对象的既有项目；v11 为词源关系增加可空的历史事件证据链接，v12 为语言增加完整基本属性 JSON。Rust 在每次项目数据库打开前显式执行迁移，不能
   依赖 Tauri SQL 插件只在本次进程第一次加载固定数据库 URL 时消费的一次性迁移清单。
@@ -223,6 +236,7 @@ npm run verify:phase4
 npm run verify:phase5
 npm run verify:phase6
 npm run verify:phase7-1
+npm run verify:phase7-2
 ```
 
 如果某项因本机工具或下载条件未运行，报告为“未验证”，不得写成通过。

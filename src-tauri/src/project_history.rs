@@ -17,6 +17,12 @@ const TRACKED_TABLES: &[&str] = &[
     "stage_context_records",
     "evolutions",
     "evolution_test_words",
+    "evolution_plans",
+    "evolution_plan_versions",
+    "evolution_runs",
+    "evolution_run_items",
+    "evolution_deliveries",
+    "evolution_delivery_items",
     "inflection_systems",
     "inflection_test_cases",
     "morphemes",
@@ -58,6 +64,8 @@ pub struct BeginProjectOperationInput {
     pub kind: String,
     pub summary: String,
     pub created_at: String,
+    pub coalesce_key: Option<String>,
+    pub coalesce_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +140,8 @@ async fn begin_operation(app: AppHandle, input: BeginProjectOperationInput) -> R
     }
     let mut connection = connect(&app).await?;
     rollback_pending(&mut connection).await?;
+    // Pending recovery must always return to the last successful save. Previous
+    // operations are merged only after this new action completes successfully.
     let snapshot = read_snapshot(&mut connection).await?;
     let snapshot_json = serde_json::to_string(&snapshot)
         .map_err(|error| format!("cannot serialize project operation snapshot: {error}"))?;
@@ -140,8 +150,9 @@ async fn begin_operation(app: AppHandle, input: BeginProjectOperationInput) -> R
     }
     sqlx::query(
         "INSERT INTO project_operations
-         (id, project_id, kind, summary, before_snapshot_json, changes_json, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, '[]', 'pending', ?6)",
+         (id, project_id, kind, summary, before_snapshot_json, changes_json, status, created_at,
+          coalesce_key, coalesce_session_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, '[]', 'pending', ?6, ?7, ?8)",
     )
     .bind(input.id)
     .bind(input.project_id)
@@ -149,6 +160,8 @@ async fn begin_operation(app: AppHandle, input: BeginProjectOperationInput) -> R
     .bind(input.summary.trim())
     .bind(snapshot_json)
     .bind(input.created_at)
+    .bind(input.coalesce_key)
+    .bind(input.coalesce_session_id)
     .execute(&mut connection)
     .await
     .map_err(|error| format!("cannot begin project operation: {error}"))?;
@@ -162,7 +175,8 @@ async fn complete_operation(app: AppHandle, operation_id: &str) -> Result<bool, 
         .await
         .map_err(|error| format!("cannot lock project operation: {error}"))?;
     let row = sqlx::query(
-        "SELECT project_id, before_snapshot_json FROM project_operations
+        "SELECT project_id, before_snapshot_json, coalesce_key, coalesce_session_id
+         FROM project_operations
          WHERE id = ?1 AND status = 'pending'",
     )
     .bind(operation_id)
@@ -172,8 +186,49 @@ async fn complete_operation(app: AppHandle, operation_id: &str) -> Result<bool, 
     .ok_or_else(|| "PROJECT_OPERATION_NOT_PENDING".to_string())?;
     let project_id: String = row.get("project_id");
     let before_json: String = row.get("before_snapshot_json");
-    let before: Snapshot = serde_json::from_str(&before_json)
+    let mut before: Snapshot = serde_json::from_str(&before_json)
         .map_err(|error| format!("cannot decode project operation snapshot: {error}"))?;
+    let coalesce_key: Option<String> = row.get("coalesce_key");
+    let coalesce_session_id: Option<String> = row.get("coalesce_session_id");
+    let mut previous_id: Option<String> = None;
+    if let (Some(key), Some(session_id)) = (
+        coalesce_key
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+        coalesce_session_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+    ) {
+        if let Some(previous) = sqlx::query(
+            "SELECT id, changes_json FROM project_operations
+             WHERE project_id = ?1 AND status = 'applied'
+               AND coalesce_key = ?2 AND coalesce_session_id = ?3
+             ORDER BY created_at DESC, id DESC LIMIT 1",
+        )
+        .bind(&project_id)
+        .bind(key)
+        .bind(session_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|error| format!("cannot read prior coalesced operation: {error}"))?
+        {
+            previous_id = Some(previous.get("id"));
+            let previous_json: String = previous.get("changes_json");
+            let previous_changes: Vec<StoredChange> = serde_json::from_str(&previous_json)
+                .map_err(|error| format!("cannot decode prior coalesced operation: {error}"))?;
+            for change in previous_changes {
+                let table = before.entry(change.table).or_default();
+                match change.before {
+                    Some(value) => {
+                        table.insert(change.key, value);
+                    }
+                    None => {
+                        table.remove(&change.key);
+                    }
+                }
+            }
+        }
+    }
     let after = read_snapshot(&mut transaction).await?;
     let changes = diff_snapshots(&before, &after);
     if changes.is_empty() {
@@ -182,6 +237,13 @@ async fn complete_operation(app: AppHandle, operation_id: &str) -> Result<bool, 
             .execute(&mut *transaction)
             .await
             .map_err(|error| format!("cannot remove empty project operation: {error}"))?;
+        if let Some(previous_id) = previous_id {
+            sqlx::query("DELETE FROM project_operations WHERE id = ?1")
+                .bind(previous_id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| format!("cannot remove empty coalesced operation: {error}"))?;
+        }
         transaction
             .commit()
             .await
@@ -199,6 +261,13 @@ async fn complete_operation(app: AppHandle, operation_id: &str) -> Result<bool, 
     .execute(&mut *transaction)
     .await
     .map_err(|error| format!("cannot clear project redo history: {error}"))?;
+    if let Some(previous_id) = previous_id {
+        sqlx::query("DELETE FROM project_operations WHERE id = ?1")
+            .bind(previous_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| format!("cannot replace coalesced operation: {error}"))?;
+    }
     sqlx::query(
         "UPDATE project_operations SET before_snapshot_json = NULL,
          changes_json = ?1, status = 'applied' WHERE id = ?2",

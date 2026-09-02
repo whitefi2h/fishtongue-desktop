@@ -25,6 +25,7 @@ export default function FishTongueDesktop() {
       aiApplication={applications.ai}
       historyApplication={applications.history}
       phase6Application={applications.phase6}
+      evolutionApplication={applications.evolution}
     />
   );
 }

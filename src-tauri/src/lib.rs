@@ -11,7 +11,7 @@ use ai::{
 };
 use analysis::{
     analysis_cancel, analysis_describe_segments, analysis_rank_segment_mappings,
-    analysis_validate_ipa, shutdown_analysis, AnalysisRuntime,
+    analysis_validate_ipa, analysis_validate_ipas, shutdown_analysis, AnalysisRuntime,
 };
 use lexurgy::{
     lexurgy_cancel, lexurgy_ensure_ready, lexurgy_generate_words, lexurgy_inflect, lexurgy_run,
@@ -70,12 +70,16 @@ pub fn run() {
             ai_stream_turn,
             ai_cancel,
             analysis_validate_ipa,
+            analysis_validate_ipas,
             analysis_describe_segments,
             analysis_rank_segment_mappings,
             analysis_cancel,
         ])
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed) {
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            ) {
                 shutdown_lexurgy(window.state::<LexurgySupervisor>().inner());
                 shutdown_analysis(window.state::<AnalysisRuntime>().inner());
             }

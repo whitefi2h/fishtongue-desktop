@@ -51,6 +51,8 @@ export interface ProjectHistoryPort {
     kind: string;
     summary: string;
     createdAt: string;
+    coalesceKey?: string;
+    coalesceSessionId?: string;
   }): Promise<void>;
   complete(operationId: string): Promise<boolean>;
   abort(operationId: string): Promise<void>;

@@ -1,4 +1,7 @@
-import { ProjectApplication, ProjectSnapshot } from "@/fishtongue/application/ports/ProjectApplication";
+import {
+  ProjectApplication,
+  ProjectSnapshot,
+} from "@/fishtongue/application/ports/ProjectApplication";
 import {
   DatabaseSessionPort,
   ConceptListRepository,
@@ -68,17 +71,24 @@ export default class ProjectSessionService implements ProjectApplication {
   async runProjectOperation<T>(
     kind: string,
     summary: string,
-    action: () => Promise<T>
+    action: () => Promise<T>,
+    options?: {
+      operationId?: string;
+      coalesceKey?: string;
+      coalesceSessionId?: string;
+    }
   ): Promise<T> {
     const current = this.requireSnapshot();
     if (this.operationDepth > 0 || !this.history) return action();
-    const operationId = uuid();
+    const operationId = options?.operationId ?? uuid();
     await this.history.begin({
       id: operationId,
       projectId: current.project.id,
       kind,
       summary,
       createdAt: new Date().toISOString(),
+      coalesceKey: options?.coalesceKey,
+      coalesceSessionId: options?.coalesceSessionId,
     });
     this.operationDepth += 1;
     try {
@@ -90,7 +100,9 @@ export default class ProjectSessionService implements ProjectApplication {
         await this.history.abort(operationId);
       } catch (abortError) {
         throw new Error(
-          `操作失败，自动恢复也未完成：${errorMessage(error)}；${errorMessage(abortError)}`
+          `操作失败，自动恢复也未完成：${errorMessage(error)}；${errorMessage(
+            abortError
+          )}`
         );
       }
       throw error;
@@ -102,7 +114,10 @@ export default class ProjectSessionService implements ProjectApplication {
   async undoProjectOperation() {
     const current = this.requireSnapshot();
     if (!this.history) return null;
-    const result = await this.history.undo(current.project.id, new Date().toISOString());
+    const result = await this.history.undo(
+      current.project.id,
+      new Date().toISOString()
+    );
     if (result) {
       const languages = await this.languages.list(current.project.id);
       await this.changed({ ...this.requireSnapshot(), languages });
@@ -113,7 +128,10 @@ export default class ProjectSessionService implements ProjectApplication {
   async redoProjectOperation() {
     const current = this.requireSnapshot();
     if (!this.history) return null;
-    const result = await this.history.redo(current.project.id, new Date().toISOString());
+    const result = await this.history.redo(
+      current.project.id,
+      new Date().toISOString()
+    );
     if (result) {
       const languages = await this.languages.list(current.project.id);
       await this.changed({ ...this.requireSnapshot(), languages });
@@ -224,8 +242,10 @@ export default class ProjectSessionService implements ProjectApplication {
       createdAt: now,
       updatedAt: now,
     };
-    await this.runProjectOperation("language.create", `创建语言“${language.name}”`, () =>
-      this.languages.create(language)
+    await this.runProjectOperation(
+      "language.create",
+      `创建语言“${language.name}”`,
+      () => this.languages.create(language)
     );
     await this.changed({
       ...current,
@@ -238,8 +258,10 @@ export default class ProjectSessionService implements ProjectApplication {
     const current = this.requireSnapshot();
     const normalizedName = requiredText(name, "语言名称");
     const updatedAt = new Date().toISOString();
-    await this.runProjectOperation("language.rename", `重命名语言为“${normalizedName}”`, () =>
-      this.languages.rename(id, normalizedName, updatedAt)
+    await this.runProjectOperation(
+      "language.rename",
+      `重命名语言为“${normalizedName}”`,
+      () => this.languages.rename(id, normalizedName, updatedAt)
     );
     await this.changed({
       ...current,
@@ -251,7 +273,10 @@ export default class ProjectSessionService implements ProjectApplication {
     });
   }
 
-  async saveLanguageProfile(id: string, profile: NonNullable<Language["profile"]>): Promise<void> {
+  async saveLanguageProfile(
+    id: string,
+    profile: NonNullable<Language["profile"]>
+  ): Promise<void> {
     const current = this.requireSnapshot();
     const updatedAt = new Date().toISOString();
     await this.runProjectOperation("language.profile", "修改语言基本属性", () =>
@@ -268,8 +293,10 @@ export default class ProjectSessionService implements ProjectApplication {
   async deleteLanguage(id: string): Promise<void> {
     const current = this.requireSnapshot();
     const language = current.languages.find((value) => value.id === id);
-    await this.runProjectOperation("language.delete", `删除语言“${language?.name ?? id}”`, () =>
-      this.languages.delete(id)
+    await this.runProjectOperation(
+      "language.delete",
+      `删除语言“${language?.name ?? id}”`,
+      () => this.languages.delete(id)
     );
     await this.changed({
       ...current,
@@ -301,12 +328,17 @@ export default class ProjectSessionService implements ProjectApplication {
       sourceType: lexeme.sourceType ?? "manual",
       notes: lexeme.notes.trim(),
       senses,
-      morphemes: lexeme.morphemes.map((value, position) => ({ ...value, position })),
+      morphemes: lexeme.morphemes.map((value, position) => ({
+        ...value,
+        position,
+      })),
       updatedAt: new Date().toISOString(),
     };
     await this.runProjectOperation(
       "lexeme.save",
-      `${lexeme.createdAt === lexeme.updatedAt ? "创建" : "修改"}词条“${romanized}”`,
+      `${
+        lexeme.createdAt === lexeme.updatedAt ? "创建" : "修改"
+      }词条“${romanized}”`,
       () => this.lexemes.save(normalized)
     );
     await this.changed(this.requireSnapshot());
@@ -314,7 +346,9 @@ export default class ProjectSessionService implements ProjectApplication {
 
   async deleteLexeme(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.runProjectOperation("lexeme.delete", "删除词条", () => this.lexemes.delete(id));
+    await this.runProjectOperation("lexeme.delete", "删除词条", () =>
+      this.lexemes.delete(id)
+    );
     await this.changed(this.requireSnapshot());
   }
 
@@ -355,19 +389,25 @@ export default class ProjectSessionService implements ProjectApplication {
       notes: value.notes.trim(),
       updatedAt: new Date().toISOString(),
     };
-    await this.runProjectOperation("morpheme.save", `保存语素“${normalized.form}”`, () =>
-      this.morphemes.save(normalized)
+    await this.runProjectOperation(
+      "morpheme.save",
+      `保存语素“${normalized.form}”`,
+      () => this.morphemes.save(normalized)
     );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteMorpheme(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.runProjectOperation("morpheme.delete", "删除语素", () => this.morphemes.delete(id));
+    await this.runProjectOperation("morpheme.delete", "删除语素", () =>
+      this.morphemes.delete(id)
+    );
     await this.changed(this.requireSnapshot());
   }
 
-  listWordGenerationProfiles(languageId: string): Promise<WordGenerationProfile[]> {
+  listWordGenerationProfiles(
+    languageId: string
+  ): Promise<WordGenerationProfile[]> {
     this.requireSnapshot();
     return this.generationProfiles.list(languageId);
   }
@@ -380,16 +420,20 @@ export default class ProjectSessionService implements ProjectApplication {
       configVersion: "wordgen-profile-v1",
       updatedAt: new Date().toISOString(),
     };
-    await this.runProjectOperation("wordgen-profile.save", `保存造词配置“${normalized.name}”`, () =>
-      this.generationProfiles.save(normalized)
+    await this.runProjectOperation(
+      "wordgen-profile.save",
+      `保存造词配置“${normalized.name}”`,
+      () => this.generationProfiles.save(normalized)
     );
     await this.changed(this.requireSnapshot());
   }
 
   async deleteWordGenerationProfile(id: string): Promise<void> {
     this.requireSnapshot();
-    await this.runProjectOperation("wordgen-profile.delete", "删除造词配置", () =>
-      this.generationProfiles.delete(id)
+    await this.runProjectOperation(
+      "wordgen-profile.delete",
+      "删除造词配置",
+      () => this.generationProfiles.delete(id)
     );
     await this.changed(this.requireSnapshot());
   }
@@ -413,8 +457,10 @@ export default class ProjectSessionService implements ProjectApplication {
       })),
       updatedAt: new Date().toISOString(),
     };
-    await this.runProjectOperation("concept-list.save", `保存概念表“${normalized.name}”`, () =>
-      this.conceptLists.save(normalized)
+    await this.runProjectOperation(
+      "concept-list.save",
+      `保存概念表“${normalized.name}”`,
+      () => this.conceptLists.save(normalized)
     );
     await this.changed(this.requireSnapshot());
   }
@@ -435,8 +481,10 @@ export default class ProjectSessionService implements ProjectApplication {
   async createGenerationBatch(value: GenerationBatch): Promise<void> {
     this.requireSnapshot();
     if (!value.candidates.length) throw new Error("没有可审核的候选。");
-    await this.runProjectOperation("generation-review.create", "创建造词审核批次", () =>
-      this.generationBatches.create(value)
+    await this.runProjectOperation(
+      "generation-review.create",
+      "创建造词审核批次",
+      () => this.generationBatches.create(value)
     );
     await this.changed(this.requireSnapshot());
   }
@@ -451,16 +499,28 @@ export default class ProjectSessionService implements ProjectApplication {
     const lexemes = await this.lexemes.list(batch.languageId);
     const folded = value.romanized.trim().normalize("NFC").toLocaleLowerCase();
     const conflicts: GenerationCandidate["conflicts"] = [];
-    if (lexemes.some((lexeme) =>
-      lexeme.romanized.normalize("NFC").toLocaleLowerCase() === folded
-    )) {
-      conflicts.push({ code: "DUPLICATE_LEXEME", message: "词典中已有相同词形。" });
+    if (
+      lexemes.some(
+        (lexeme) =>
+          lexeme.romanized.normalize("NFC").toLocaleLowerCase() === folded
+      )
+    ) {
+      conflicts.push({
+        code: "DUPLICATE_LEXEME",
+        message: "词典中已有相同词形。",
+      });
     }
-    if (batch.candidates.some((candidate) =>
-      candidate.id !== value.id &&
-      candidate.romanized.normalize("NFC").toLocaleLowerCase() === folded
-    )) {
-      conflicts.push({ code: "DUPLICATE_CANDIDATE", message: "本批次中存在相同词形。" });
+    if (
+      batch.candidates.some(
+        (candidate) =>
+          candidate.id !== value.id &&
+          candidate.romanized.normalize("NFC").toLocaleLowerCase() === folded
+      )
+    ) {
+      conflicts.push({
+        code: "DUPLICATE_CANDIDATE",
+        message: "本批次中存在相同词形。",
+      });
     }
     const normalized = {
       ...value,
@@ -468,8 +528,10 @@ export default class ProjectSessionService implements ProjectApplication {
       gloss: requiredText(value.gloss, "候选释义"),
       romanized: requiredText(value.romanized, "候选词形"),
     };
-    await this.runProjectOperation("generation-review.edit", "修改造词审核候选", () =>
-      this.generationBatches.saveCandidate(batchId, normalized)
+    await this.runProjectOperation(
+      "generation-review.edit",
+      "修改造词审核候选",
+      () => this.generationBatches.saveCandidate(batchId, normalized)
     );
     await this.changed(this.requireSnapshot());
   }
@@ -489,8 +551,10 @@ export default class ProjectSessionService implements ProjectApplication {
     if (values.some((candidate) => !editableIds.has(candidate.id))) {
       throw new Error("已提交候选不能再次修改。");
     }
-    await this.runProjectOperation("generation-review.edit", "批量修改造词审核候选", () =>
-      this.generationBatches.saveCandidates(batchId, values)
+    await this.runProjectOperation(
+      "generation-review.edit",
+      "批量修改造词审核候选",
+      () => this.generationBatches.saveCandidates(batchId, values)
     );
     await this.changed(this.requireSnapshot());
   }
@@ -499,13 +563,18 @@ export default class ProjectSessionService implements ProjectApplication {
     this.requireSnapshot();
     const batch = await this.generationBatches.get(batchId);
     if (!batch) throw new Error("审核批次不存在。");
-    const accepted = batch.candidates.filter((candidate) => candidate.status === "accepted");
+    const accepted = batch.candidates.filter(
+      (candidate) => candidate.status === "accepted"
+    );
     if (!accepted.length) throw new Error("至少接受一个候选后才能提交。");
     if (accepted.some((candidate) => candidate.conflicts.length > 0)) {
       throw new Error("已接受候选中仍有冲突，请先修改词形或取消接受。");
     }
-    await this.runProjectOperation("generation.commit", "提交造词审核结果", () =>
-      this.generationBatches.commit(batchId, uuid(), new Date().toISOString())
+    await this.runProjectOperation(
+      "generation.commit",
+      "提交造词审核结果",
+      () =>
+        this.generationBatches.commit(batchId, uuid(), new Date().toISOString())
     );
     await this.changed(this.requireSnapshot());
   }
@@ -514,13 +583,17 @@ export default class ProjectSessionService implements ProjectApplication {
     this.requireSnapshot();
     const batch = await this.generationBatches.get(batchId);
     if (!batch) throw new Error("审核批次不存在。");
-    await this.runProjectOperation("generation-review.dismiss", "关闭造词审核批次", () =>
-      this.generationBatches.dismiss(batchId, new Date().toISOString())
+    await this.runProjectOperation(
+      "generation-review.dismiss",
+      "关闭造词审核批次",
+      () => this.generationBatches.dismiss(batchId, new Date().toISOString())
     );
     await this.changed(this.requireSnapshot());
   }
 
-  listLexiconBatchOperations(languageId: string): Promise<LexiconBatchOperation[]> {
+  listLexiconBatchOperations(
+    languageId: string
+  ): Promise<LexiconBatchOperation[]> {
     this.requireSnapshot();
     return this.generationBatches.listOperations(languageId);
   }
@@ -601,9 +674,9 @@ export default class ProjectSessionService implements ProjectApplication {
     this.cancelAutoSave();
     const operation = this.saveQueue.then(async () => {
       await this.database.execute("PRAGMA wal_checkpoint(TRUNCATE)");
-      const [integrity] = await this.database.select<{ integrity_check: string }>(
-        "PRAGMA integrity_check"
-      );
+      const [integrity] = await this.database.select<{
+        integrity_check: string;
+      }>("PRAGMA integrity_check");
       if (!integrity || integrity.integrity_check !== "ok") {
         throw new Error("SQLite 完整性检查失败，项目文件未被替换。");
       }

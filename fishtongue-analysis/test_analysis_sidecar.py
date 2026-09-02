@@ -111,6 +111,21 @@ class AnalysisProtocolTests(unittest.TestCase):
         self.assertEqual(response["result"]["segments"], ["ə", "ʃ", "ŋ", "ɡ"])
         self.assertEqual(response["result"]["unknown"], [])
 
+    def test_validates_an_ipa_batch_in_one_process(self):
+        response = request({
+            "protocolVersion": 1,
+            "nonce": "ipa-batch",
+            "method": "validate_ipas",
+            "payload": {"ipas": ["pa", "tə"]},
+        })
+        if not response["ok"]:
+            if os.environ.get("FISHTONGUE_REQUIRE_PANPHON") == "1":
+                self.fail(response)
+            self.skipTest("PanPhon is not installed in the system Python")
+        self.assertEqual(len(response["result"]), 2)
+        self.assertEqual(response["result"][0]["segments"], ["p", "a"])
+        self.assertEqual(response["result"][1]["segments"], ["t", "ə"])
+
     def test_unicode_limit_is_enforced(self):
         response = request({
             "protocolVersion": 1,

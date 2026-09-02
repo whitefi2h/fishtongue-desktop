@@ -253,6 +253,13 @@ describe("FishTongue Phase 1.5 desktop prototype", () => {
     cy.get("input[name='lexeme-romanized']").should("have.value", "");
     cy.contains("tr", "ama").find("td").eq(2).click();
     cy.get("input[name='lexeme-romanized']").should("have.value", "ama");
+
+    cy.get("[aria-label='工作区导航']").contains("button", "概览").click();
+    cy.contains("个词条").parent().should("contain.text", "1");
+    cy.get("[aria-label='应用菜单']").contains("button", "视图").click();
+    cy.get("[role='menu']").contains("button", "项目主页").click();
+    cy.contains("个词条").parent().should("contain.text", "1");
+    cy.contains("测试语言").parent().should("contain.text", "1 词");
   });
 
   it("refreshes the active history workspace immediately after global undo", () => {

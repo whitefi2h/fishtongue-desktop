@@ -9,6 +9,8 @@ export default class TauriProjectHistoryAdapter implements ProjectHistoryPort {
     kind: string;
     summary: string;
     createdAt: string;
+    coalesceKey?: string;
+    coalesceSessionId?: string;
   }): Promise<void> {
     return invoke("begin_project_operation", { input });
   }

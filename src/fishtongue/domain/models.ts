@@ -221,7 +221,11 @@ export interface PhonologyProfile {
 }
 
 export interface BorrowingProfileConfig {
-  explicitMappings: Array<{ source: string; targets: string[]; priority: number }>;
+  explicitMappings: Array<{
+    source: string;
+    targets: string[];
+    priority: number;
+  }>;
   distanceWeights: Record<string, number>;
   epenthesis: Array<{ phoneme: string; positions: string[] }>;
   deletionRules: string[];
@@ -250,7 +254,11 @@ export interface BorrowingProfile {
 }
 
 export type BorrowingBatchStatus = "draft" | "committed" | "discarded";
-export type BorrowingCandidateStatus = "pending" | "accepted" | "rejected" | "committed";
+export type BorrowingCandidateStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "committed";
 
 export interface BorrowingCandidate {
   id: string;
@@ -356,6 +364,7 @@ export interface Lexeme {
 
 export type LexicalStatus = "draft" | "confirmed" | "deprecated";
 export type LexemeSourceType = "manual" | "generated" | "derived" | "imported";
+export type EvolutionLexemeSourceType = LexemeSourceType | "borrowing";
 export type MorphemeType =
   | "root"
   | "prefix"
@@ -461,7 +470,11 @@ export type GenerationBatchStatus = "draft" | "committed" | "undone";
 export type CandidateStatus = "pending" | "accepted" | "rejected" | "committed";
 
 export interface GenerationConflict {
-  code: "DUPLICATE_LEXEME" | "DUPLICATE_CANDIDATE" | "ILLEGAL_FORM" | "MISSING_GLOSS";
+  code:
+    | "DUPLICATE_LEXEME"
+    | "DUPLICATE_CANDIDATE"
+    | "ILLEGAL_FORM"
+    | "MISSING_GLOSS";
   message: string;
 }
 
@@ -517,6 +530,193 @@ export interface Evolution {
   soundChanges: string;
   updatedAt: UtcTimestamp;
   testWords: EvolutionTestWord[];
+}
+
+export type EvolutionInputMode = "phonological" | "orthographic";
+export type EvolutionRunStatus = "succeeded" | "failed" | "cancelled";
+export type EvolutionRunItemStatus =
+  | "changed"
+  | "unchanged"
+  | "warning"
+  | "error"
+  | "not_run";
+export type EvolutionRunInputOrigin = "stored" | "temporary" | "missing";
+export type EvolutionDeliveryTarget =
+  | "new_stage"
+  | "existing_stage"
+  | "existing_dialect"
+  | "new_descendant";
+export type OrthographyResolution = "pending" | "preserved" | "manual";
+export type EvolutionDeliveryStatus = "draft" | "committed" | "undone";
+export type EvolutionDeliveryDecision =
+  | "include"
+  | "skip"
+  | "create_homograph"
+  | "merge_senses";
+
+export interface EvolutionPhonemeResolution {
+  ipa: string;
+  displaySymbol: string;
+  category: PhonemeClass;
+  role: PhonemeRole;
+  parentPhonemeId?: string;
+  distribution: string;
+  sourceRule?: string;
+}
+
+export interface EvolutionPhonemeOption {
+  id: string;
+  ipa: string;
+  displaySymbol: string;
+  category: PhonemeClass;
+}
+
+export interface EvolutionPlanScope {
+  query: string;
+  partOfSpeech: string;
+  lexicalStatus: "all" | LexicalStatus;
+  sourceType: "all" | EvolutionLexemeSourceType;
+}
+
+export interface EvolutionPlan {
+  id: string;
+  languageId: string;
+  legacyEvolutionId?: string;
+  name: string;
+  description: string;
+  sourceStageId?: string;
+  inputMode: EvolutionInputMode;
+  rulesDraft: string;
+  testWords: EvolutionTestWord[];
+  scope: EvolutionPlanScope;
+  archived: boolean;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+}
+
+export interface EvolutionPlanVersion {
+  id: string;
+  planId: string;
+  versionNumber: number;
+  rulesSnapshot: string;
+  testWords: EvolutionTestWord[];
+  inputMode: EvolutionInputMode;
+  scope: EvolutionPlanScope;
+  note: string;
+  contentHash: string;
+  createdAt: UtcTimestamp;
+}
+
+export interface EvolutionIssue {
+  code: string;
+  severity: "error" | "warning" | "information";
+  message: string;
+  recovery?: string;
+}
+
+export interface EvolutionRunSummary {
+  total: number;
+  changed: number;
+  unchanged: number;
+  warnings: number;
+  errors: number;
+  notRun: number;
+}
+
+export interface EvolutionRunItem {
+  id: string;
+  runId: string;
+  sourceLexemeId?: string;
+  sourceDisplayForm: string;
+  sourcePhonologicalForm: string;
+  engineInput: string;
+  engineOutput: string;
+  targetPhonologicalForm: string;
+  inputOrigin: EvolutionRunInputOrigin;
+  status: EvolutionRunItemStatus;
+  intermediate: Record<string, string>;
+  trace: Array<{ rule: string; output: string }>;
+  issues: EvolutionIssue[];
+  position: number;
+}
+
+export interface EvolutionRun {
+  id: string;
+  planVersionId: string;
+  sourceLanguageId: string;
+  sourceStageId: string;
+  inputMode: EvolutionInputMode;
+  status: EvolutionRunStatus;
+  engineVersion: string;
+  engineHash: string;
+  protocolVersion: string;
+  rulesHash: string;
+  inputHash: string;
+  sourceStateHash: string;
+  sourcePhonology: Record<string, unknown>;
+  summary: EvolutionRunSummary;
+  errors: EvolutionIssue[];
+  createdAt: UtcTimestamp;
+  completedAt: UtcTimestamp;
+  items?: EvolutionRunItem[];
+}
+
+export interface EvolutionDeliveryItem {
+  id: string;
+  deliveryId: string;
+  runItemId: string;
+  decision: EvolutionDeliveryDecision;
+  targetPhonologicalForm: string;
+  targetDisplayForm: string;
+  orthographyResolution: OrthographyResolution;
+  homophoneAcknowledged: boolean;
+  conflicts: EvolutionIssue[];
+  notes: string;
+  targetLexemeId?: string;
+  position: number;
+}
+
+export interface EvolutionDelivery {
+  id: string;
+  runId: string;
+  targetType: EvolutionDeliveryTarget;
+  targetLanguageId?: string;
+  targetStageId?: string;
+  targetConfig: Record<string, unknown>;
+  targetStateHash: string;
+  status: EvolutionDeliveryStatus;
+  summary: Record<string, unknown>;
+  projectOperationId?: string;
+  createdAt: UtcTimestamp;
+  updatedAt: UtcTimestamp;
+  committedAt?: UtcTimestamp;
+  items: EvolutionDeliveryItem[];
+}
+
+export interface EvolutionGraphMarker {
+  deliveryId: string;
+  deliveryStatus: EvolutionDeliveryStatus;
+  targetType: EvolutionDeliveryTarget;
+  sourceLanguageId: string;
+  sourceStageId: string;
+  targetLanguageId: string;
+  targetStageId: string;
+  planId: string;
+  planName: string;
+  versionNumber: number;
+  runId: string;
+  rulesHash: string;
+  total: number;
+  changed: number;
+  warnings: number;
+  committedAt?: UtcTimestamp;
+}
+
+export interface EvolutionGraphData {
+  languages: Language[];
+  relations: LanguageRelation[];
+  stagesByLanguage: Map<string, LanguageStage[]>;
+  markers: EvolutionGraphMarker[];
 }
 
 export interface InflectionTestCase {
@@ -689,4 +889,3 @@ export interface AiConversationDetail {
   proposals: AiProposal[];
   audits: AiContextAudit[];
 }
-

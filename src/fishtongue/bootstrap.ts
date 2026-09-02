@@ -47,6 +47,14 @@ import {
 import TauriPhonologyAnalysisAdapter from "@/fishtongue/infrastructure/TauriPhonologyAnalysisAdapter";
 import BorrowingAdaptationService from "@/fishtongue/application/services/BorrowingAdaptationService";
 import TauriProjectHistoryAdapter from "@/fishtongue/infrastructure/TauriProjectHistoryAdapter";
+import { EvolutionApplication } from "@/fishtongue/application/ports/EvolutionApplication";
+import EvolutionApplicationService from "@/fishtongue/application/services/EvolutionApplicationService";
+import {
+  SqliteEvolutionDeliveryRepository,
+  SqliteEvolutionPlanRepository,
+  SqliteEvolutionRunRepository,
+} from "@/fishtongue/infrastructure/Phase7EvolutionRepositories";
+import engineLock from "../../engine/engine-lock.json";
 
 export function createDesktopSoundChangeService(): SoundChangeService {
   const soundChangeEngine = new TauriLexurgyEngineAdapter();
@@ -89,6 +97,7 @@ export function createDesktopApplications(): {
   ai: AiApplication;
   history: Phase5Application;
   phase6: Phase6Application;
+  evolution: EvolutionApplication;
 } {
   const database = new TauriDatabaseSession();
   const project = createProjectApplication(database);
@@ -145,7 +154,21 @@ export function createDesktopApplications(): {
     stageResolver,
     history
   );
-  return { project, ai, history, phase6 };
+  const evolution = new EvolutionApplicationService(
+    project,
+    history,
+    phase6,
+    createDesktopSoundChangeService(),
+    new SqliteEvolutionPlanRepository(database),
+    new SqliteEvolutionRunRepository(database),
+    new SqliteEvolutionDeliveryRepository(database),
+    {
+      version: engineLock.engineVersion,
+      hash: engineLock.fatJarSha256,
+      protocolVersion: String(engineLock.protocolVersion),
+    }
+  );
+  return { project, ai, history, phase6, evolution };
 }
 
 export function createDesktopWindowPort(): TauriDesktopWindowAdapter {

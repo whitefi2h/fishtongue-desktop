@@ -5,6 +5,9 @@ export default class TauriPhonologyAnalysisAdapter implements PhonologyAnalysisE
   validateIpa(input: { ipa: string }): Promise<IpaValidationResult> {
     return this.invokeAnalysis("analysis_validate_ipa", input);
   }
+  validateIpas(input: { ipas: string[] }): Promise<IpaValidationResult[]> {
+    return this.invokeAnalysis("analysis_validate_ipas", input);
+  }
   describeSegments(input: { ipa: string }): Promise<SegmentDescription[]> {
     return this.invokeAnalysis("analysis_describe_segments", input);
   }

@@ -18,6 +18,7 @@ if hasattr(sys.stdout, "reconfigure"):
 PROTOCOL_VERSION = 1
 MAX_CODEPOINTS = 128
 MAX_TARGETS = 512
+MAX_IPA_BATCH = 512
 
 try:
     import panphon  # type: ignore
@@ -72,6 +73,13 @@ def validate_ipa(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_ipas(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    values = payload.get("ipas", [])
+    if not isinstance(values, list) or len(values) > MAX_IPA_BATCH:
+        raise ValueError("INVALID_IPA_BATCH")
+    return [validate_ipa({"ipa": str(value)}) for value in values]
+
+
 def describe_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     for segment in _segments(str(payload.get("ipa", ""))):
@@ -112,6 +120,7 @@ def rank_segment_mappings(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 HANDLERS = {
     "validate_ipa": validate_ipa,
+    "validate_ipas": validate_ipas,
     "describe_segments": describe_segments,
     "rank_segment_mappings": rank_segment_mappings,
 }

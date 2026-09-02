@@ -1,4 +1,5 @@
 import { ProjectApplication } from "@/fishtongue/application/ports/ProjectApplication";
+import { EvolutionApplication } from "@/fishtongue/application/ports/EvolutionApplication";
 import { Phase5Application } from "@/fishtongue/application/ports/Phase5Application";
 import { AiProposalDraft } from "@/fishtongue/application/ports/AiPorts";
 import { normalizeInflectionRules } from "@/fishtongue/application/services/AiProposalService";
@@ -26,19 +27,11 @@ import {
 } from "@radix-ui/react-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
+import EvolutionWorkbench from "@/fishtongue/ui/EvolutionWorkbench";
 
-export function EvolutionWorkspace({
-  application,
-  service,
-  languageId,
-  live,
-  aiDraft,
-  onAiDraftConsumed,
-  historyApplication,
-  selectedStageId,
-  onStageDataChanged,
-}: {
+type EvolutionWorkspaceProps = {
   application: ProjectApplication;
+  evolutionApplication?: EvolutionApplication;
   service?: SoundChangeService;
   languageId: string;
   live: boolean;
@@ -47,7 +40,41 @@ export function EvolutionWorkspace({
   historyApplication?: Phase5Application;
   selectedStageId?: string;
   onStageDataChanged?: () => void;
-}) {
+  onOpenLanguage?: (languageId: string) => void;
+  onOpenStage?: (languageId: string, stageId: string) => void;
+};
+
+export function EvolutionWorkspace(props: EvolutionWorkspaceProps) {
+  if (props.evolutionApplication && props.historyApplication) {
+    return <EvolutionWorkbench
+      application={props.application}
+      evolution={props.evolutionApplication}
+      history={props.historyApplication}
+      languageId={props.languageId}
+      selectedStageId={props.selectedStageId}
+      live={props.live}
+      aiDraft={props.aiDraft}
+      onAiDraftConsumed={props.onAiDraftConsumed}
+      onStageDataChanged={props.onStageDataChanged}
+      onOpenLanguage={props.onOpenLanguage}
+      onOpenStage={props.onOpenStage}
+    />;
+  }
+  return <LegacyEvolutionWorkspace {...props} />;
+}
+
+function LegacyEvolutionWorkspace({
+  application,
+  evolutionApplication,
+  service,
+  languageId,
+  live,
+  aiDraft,
+  onAiDraftConsumed,
+  historyApplication,
+  selectedStageId,
+  onStageDataChanged,
+}: EvolutionWorkspaceProps) {
   const enabled = live && Boolean(service);
   const [evolution, setEvolution] = useState<Evolution | null>(null);
   const [lexiconWords, setLexiconWords] = useState<string[]>([]);

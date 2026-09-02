@@ -17,6 +17,7 @@ export interface RankedSegmentMapping {
 
 export interface PhonologyAnalysisEngine {
   validateIpa(input: { ipa: string }): Promise<IpaValidationResult>;
+  validateIpas(input: { ipas: string[] }): Promise<IpaValidationResult[]>;
   describeSegments(input: { ipa: string }): Promise<SegmentDescription[]>;
   rankMappings(
     input: {

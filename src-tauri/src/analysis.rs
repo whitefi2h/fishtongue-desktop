@@ -300,6 +300,16 @@ pub fn analysis_validate_ipa(
 }
 
 #[tauri::command]
+pub fn analysis_validate_ipas(
+    app: AppHandle,
+    runtime: State<'_, AnalysisRuntime>,
+    request_id: String,
+    input: Value,
+) -> Result<Value, String> {
+    run_analysis(&app, runtime.inner(), request_id, "validate_ipas", input)
+}
+
+#[tauri::command]
 pub fn analysis_describe_segments(
     app: AppHandle,
     runtime: State<'_, AnalysisRuntime>,
